@@ -38,14 +38,16 @@ async function testBlockchain() {
     console.log(`Your account balance is:`);
     console.log(balance.result);
     console.log(`Current Minimum Gas Price: ${minGasPrice.result}`);
-    const myGasPrice = units.toQa("10000", units.Units.Li); // Gas Price that will be used by all transactions
+    const NetworkId = await zilliqa.network.GetNetworkId();
+    console.log(NetworkId);
+    const myGasPrice = units.toQa("1000", units.Units.Li); // Gas Price that will be used by all transactions
     console.log(`My Gas Price ${myGasPrice.toString()}`);
     const isGasSufficient = myGasPrice.gte(new BN(minGasPrice.result)); // Checks if your gas price is less than the minimum gas price
     console.log(`Is the gas price sufficient? ${isGasSufficient}`);
 
     // Send a transaction to the network
     console.log("Sending a payment transaction to the network...");
-    /* const tx = await zilliqa.blockchain.createTransaction(
+    /*const tx = await zilliqa.blockchain.createTransaction(
       // Notice here we have a default function parameter named toDs which means the priority of the transaction.
       // If the value of toDs is false, then the transaction will be sent to a normal shard, otherwise, the transaction.
       // will be sent to ds shard. More info on design of sharding for smart contract can be found in.
@@ -54,17 +56,29 @@ async function testBlockchain() {
       zilliqa.transactions.new(
         {
           version: VERSION,
-          toAddr: "0xD67FAAFc7B312F95a311BeAd394Ea6aa0d673892",
-          amount: new BN(units.toQa("0", units.Units.Zil)), // Sending an amount in Zil (1) and converting the amount to Qa
+          toAddr: "0xA54E49719267E8312510D7b78598ceF16ff127CE",
+          amount: new BN(units.toQa("1", units.Units.Zil)), // Sending an amount in Zil (1) and converting the amount to Qa
           gasPrice: myGasPrice, // Minimum gasPrice veries. Check the `GetMinimumGasPrice` on the blockchain
-          gasLimit: Long.fromNumber(100)
+          gasLimit: Long.fromNumber(1)
         },
-        true
+        false
       )
-    );
+    );*/
 
+    let tx = zilliqa.transactions.new({
+      version: VERSION,
+      toAddr: "0xA54E49719267E8312510D7b78598ceF16ff127CE",
+      amount: units.toQa("1", units.Units.Zil),
+      gasPrice: units.toQa("1000", units.Units.Li),
+      gasLimit: Long.fromNumber(1)
+    });
+
+    // Send a transaction to the network
+    tx = await zilliqa.blockchain.createTransaction(tx);
+    console.log(tx.id);
+    console.log(tx);
     console.log(`The transaction status is:`);
-    console.log(tx.receipt);*/
+    console.log(tx.receipt);
 
     // Deploy a contract
     console.log(`Deploying a new contract....`);
@@ -180,7 +194,7 @@ async function testBlockchain() {
       self_DEX = _this_address;
       zero = Uint128 0;
         isApprovedCall = {_tag: "HandleBalance";
-        _recipient: contractAddress;
+        _recipient: _sender;
         _amount: zero;
         owner: _sender;
         to: self_DEX;
@@ -204,8 +218,7 @@ async function testBlockchain() {
         end
     end
     `;
-    const codeCaller = `
-    scilla_version 0
+    const codeCaller = `scilla_version 0
     
     library CallerContract
     
@@ -233,7 +246,7 @@ async function testBlockchain() {
         _amount : Uint128 0;
         contractAddress: to;
         msgSender: from;
-        tokenID : tokenid;
+        tokenID : tokenid
         };
         msgs = one_msg msg;
         send msgs
@@ -274,16 +287,11 @@ async function testBlockchain() {
     // Deploy the contract.
     // Also notice here we have a default function parameter named toDs as mentioned above.
     // A contract can be deployed at either the shard or at the DS. Always set this value to false.
-    const [deployTx, DEX] = await contract.deploy(
-      {
-        version: VERSION,
-        gasPrice: myGasPrice,
-        gasLimit: Long.fromNumber(800000)
-      },
-      99,
-      1000,
-      true
-    );
+    const [deployTx, DEX] = await contract.deploy({
+      version: VERSION,
+      gasPrice: myGasPrice,
+      gasLimit: Long.fromNumber(10000)
+    });
 
     // Introspect the state of the underlying transaction
     console.log(`Deployment Transaction ID: ${deployTx.id}`);
@@ -318,7 +326,7 @@ async function testBlockchain() {
       {
         version: VERSION,
         gasPrice: myGasPrice,
-        gasLimit: Long.fromNumber(800000)
+        gasLimit: Long.fromNumber(10000)
       },
       99,
       100,
