@@ -1,0 +1,24 @@
+{
+  "name": "zilliqa-contracts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "dependencies": {
+    "bn.js": "^5.1.1",
+    "tslib": "^1.10.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VexyCats/Zilliqa_NFT_DEX.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/VexyCats/Zilliqa_NFT_DEX/issues"
+  },
+  "homepage": "https://github.com/VexyCats/Zilliqa_NFT_DEX#readme"
+}

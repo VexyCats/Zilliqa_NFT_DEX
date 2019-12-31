@@ -507,11 +507,16 @@ async function testBlockchain() {
     // Deploy the contract.
     // Also notice here we have a default function parameter named toDs as mentioned above.
     // A contract can be deployed at either the shard or at the DS. Always set this value to false.
-    const [deployTx, DEX] = await contract.deploy({
-      version: VERSION,
-      gasPrice: new BN(2),
-      gasLimit: new BN(1000)
-    });
+    const [deployTx, DEX] = await contract.deploy(
+      {
+        version: VERSION,
+        gasPrice: new BN(50000000000),
+        gasLimit: new BN(10000)
+      },
+      50,
+      100,
+      true
+    );
 
     // Introspect the state of the underlying transaction
     console.log(`Deployment Transaction ID: ${deployTx.id}`);
