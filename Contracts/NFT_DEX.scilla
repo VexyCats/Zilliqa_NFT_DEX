@@ -1,0 +1,118 @@
+scilla_version 0 
+(***************************************************)
+(*               Associated library                *)
+(***************************************************)
+
+import BoolUtils ListUtils 
+
+library NFT 
+let one_msg = 
+	fun (msg : Message) =>
+let nil_msg = Nil {Message} in Cons {Message} msg nil_msg 
+(* Checks and see if an address is a contract owner *)
+let checkContractOwner = 
+	fun (msgSender: ByStr20) =>
+fun (contractOwner: ByStr20) =>
+builtin eq msgSender contractOwner type ListState = 
+| ListState of String (* ByStr20 - Address of owner Uint256 - price ByStr20 - address of 
+
+contract Uint256 
+- token id *) type Order = 
+| Order of ByStr20 Uint256 ByStr20 Uint256 ListState 
+(* Error events *)
+let makeErrorEvent = 
+	fun (location: String) =>
+fun (errorCode: Uint32) =>
+{_eventname: "Error"; raisedAt: location; code: errorCode } 
+(* Error codes *)(* string constant public version = "Mintable v0.6" ; string constant private NOT_EXISTS_ERROR = 'Listing not found'; string constant private EXISTS_ERROR = 'Listing already exists'; string constant private PAYMENT_ERROR = 'Transaction value Insufficient'; string constant private PERMISSION_ERROR = 'You do not have permission for action'; string constant private SIGNATURE_ERROR = 'Provided details could not be authenticated'; string constant private TRANSFER_ERROR = 'Token transfer not successful'; string constant private DEFINED_ERROR = 'Variable already set'; string constant private ACTION_ERROR = 'Action impossible at this time'; *) 
+let code_success = Uint32 0 
+let code_failure = Uint32 1 
+let code_not_authorized = Uint32 2 
+let code_not_found = Uint32 4 
+let code_bad_request = Uint32 5 
+let code_token_exists = Uint32 6 
+let code_unexpected_error = Uint32 9 
+(***************************************************)
+(*             The contract definition             *)
+(***************************************************)
+
+contract NFTDEX 
+(contractOwner : ByStr20) 
+(* mutable fields *)
+(* Orderbook: mapping (orderIds => ( (tokenA, valueA) (tokenB, valueB) )) *)
+(* @param: tokenA: Contract address of token A *)
+(* @param: valueA: total units of token A offered by maker *)
+(* @param: tokenB: Contract address of token B *)
+(* @param: valueB: total units of token B requsted by maker *)
+field orderbook : Map Uint256 Order = Emp Uint256 Order 
+(* Order info stores the mapping ( orderId => (tokenOwnerAddress, expirationBlock)) *)
+field orderInfo : Map ByStr32 (Pair (ByStr20)(BNum)) = Emp ByStr32 (Pair (ByStr20) (BNum)) 
+(* Mapping between tokenId to token owner *)
+field orderOwnerMap: Map Uint256 ByStr20 = Emp Uint256 ByStr20 
+(* Mapping from owner to number of owned tokens *)
+field ownedOrdersCount: Map ByStr20 Uint256 = Emp ByStr20 Uint256 
+(* Mapping between tokenId to approved address *)
+(* @dev: There can only be one approved address per token at a given time. *)
+field tokenApprovals: Map ByStr20 (Map Uint256 Bool) = Emp ByStr20 (Map Uint256 Bool) 
+(* Mapping from owner to operator approvals  *)
+field operatorApprovals: Map ByStr20 (Map ByStr20 Bool) = Emp ByStr20 (Map ByStr20 Bool) 
+(* immutable field *)
+transition checkApproved (contractAddress: ByStr20, tokenID: Uint256) 
+	self_DEX = _this_address; zero = Uint128 0; isApprovedCall = {_tag: "CheckApproval"; _recipient: contractAddress; _amount: zero; from: _sender; to: self_DEX; tokenID: tokenID; callback: "approved" }; 
+	msgs = one_msg isApprovedCall; 
+	send msgs 
+end
+(* @dev Transfer the ownership of a given token ID to another address @param contractAddress - address of NFT 
+
+contract @param 
+tokenID - address of NFT 
+
+contract calling: 
+transition transferFrom(from: ByStr20, to: ByStr20, tokenId: Uint256) *) procedure transferNFTtoDEX (contractAddress: ByStr20, tokenID: Uint256) 
+(* take params and make a call to transfer NFT to self.*)self_DEX = _this_address; zero = Uint128 0; transfered = {_tag: "transfer"; _recipient: contractAddress; _amount: zero; from: _sender; to: self_DEX; tokenID: tokenID; callback: "approved" }; 
+msgs = one_msg transfered; e = { _eventname : "Transfer NFT"; tokenID: tokenID}; 
+event e; 
+send msgs 
+end
+
+transition approved (tokenId: Uint256, owner: ByStr20, contractAddress: ByStr20, approval: Bool) 
+(* called back from NFT contract if approved*)
+(* check bool for approval*)
+match approval with
+	| True =>
+(* save owner and id in mapping*)tokenApprovals[contractAddress][tokenId] := approval; 
+(*call the transfer function and continue selling NFT*)transferNFTtoDEX contractAddress tokenId 
+	| False =>
+	end 
+end
+
+(* Create a listing and sell an NFT*)
+transition sell (contractAddress: ByStr20, tokenID: Uint256, price: Uint256) 
+	orderbook <- orderbook; state = "ACTIVE"; liststate = ListState state; newOrder = Order _sender price contractAddress tokenID liststate; temp_length = 
+		builtin size orderbook; test = 
+		builtin to_uint256 temp_length; 
+	match test with
+		|Some length =>
+		order <- orderbook[length]; 
+		match order with
+			| Some (Order owner price contractaddress tokenID statelist) =>
+			e = {_eventname : "test"; extracted_owner : owner}; 
+			event e 
+			| None =>
+			e = {_eventname : "test1" }; 
+			event e 
+		end
+
+		| None =>
+		e = {_eventname : "test1" }; 
+		event e 
+	end
+
+end
+
+(* Get the owner of a particular tokenId *)
+transition ownerOf(listingID: Uint256) 
+	order <- orderbook[listingID]; e = { _eventname : "OwnerOfListing"; order: order; listingid: listingID}; 
+	event e 
+end
+

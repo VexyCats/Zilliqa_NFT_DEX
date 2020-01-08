@@ -65,7 +65,7 @@ async function testBlockchain() {
       )
     );*/
 
-    let tx = zilliqa.transactions.new({
+    /*let tx = zilliqa.transactions.new({
       version: VERSION,
       toAddr: "0xA54E49719267E8312510D7b78598ceF16ff127CE",
       amount: units.toQa("1", units.Units.Zil),
@@ -80,15 +80,16 @@ async function testBlockchain() {
     console.log(`The transaction status is:`);
     console.log(tx.receipt);
 
-    // Deploy a contract
+    // Deploy a contract*/
     console.log(`Deploying a new contract....`);
     const codeDEX = `scilla_version 0
 
     (***************************************************)
     (*               Associated library                *)
     (***************************************************)
-    import BoolUtils
-    library NonfungibleToken
+    import BoolUtils ListUtils
+    
+    library NFT
     
     let one_msg = 
       fun (msg : Message) => 
@@ -101,62 +102,17 @@ async function testBlockchain() {
         fun (contractOwner: ByStr20) =>
             builtin eq msgSender contractOwner
     
-    (* Checks and see if an address is a token owner *)
-    let isTokenOwner = 
-        fun (msgSender: ByStr20) =>
-        fun (tokenId: Uint256) =>
-        fun (tokenOwnerMap_tmp : Map (Uint256) (ByStr20)) =>
-            let tokenOwner = builtin get tokenOwnerMap_tmp tokenId in
-            match tokenOwner with
-            | None => False
-            | Some val =>
-                builtin eq val msgSender
-            end 
+    type ListState =
+    | ListState of String
     
-    (* Checks if a given address is approved to make txn the given tokenID *)
-    (* Not to be confused with isApprovedForAll                            *)
-    let isApproved = 
-        fun (msgSender: ByStr20) =>
-        fun (tokenID: Uint256) =>
-        fun (approvalMap_tmp: Map (Uint256) (ByStr20)) =>
-            let val = builtin get approvalMap_tmp tokenID in
-            match val with
-            | None => False 
-            | Some val =>
-                builtin eq val msgSender
-            end
-    
-    (* Checks if an message sender is approved by a given owner. (i.e. operator) *)
-    let isApprovedForAll = 
-        fun (msgSender: ByStr20) =>
-        fun (tokenOwner: ByStr20) =>
-        fun (operatorMap: Map (ByStr20) (Map (ByStr20) (Bool))) =>
-            let m = builtin get operatorMap tokenOwner in
-            match m with
-            | None => False
-                (* owner did not assign anyone to the approval mapping *)
-            | Some val =>
-                (* val is of type Map (ByStr20) (Bool) *)
-                let check_list = builtin get val msgSender in
-                match check_list with
-                | None => False
-                | Some is_sender_approved =>
-                    (* check if sender has access rights *)
-                    match is_sender_approved with
-                    | True => True
-                    | False => False
-                    end
-                end
-            end
-    
-    (* Check if a sender is an operator of the owner, approved for the given ID *)
-    (* or is the owner of the token *)
-    let isApprovedOrOwner =
-        fun (isOwner: Bool) =>
-        fun (isApproved: Bool) =>
-        fun (isApprovedForAll: Bool) =>
-            let isOwnerOrApproved =  orb isOwner isApproved in
-            orb isOwnerOrApproved isApprovedForAll
+    (*
+    ByStr20 - Address of owner
+    Uint256 - price
+    ByStr20 - address of contract 
+    Uint256 - token id
+    *)
+     type Order =
+    | Order of ByStr20 Uint256 ByStr20 Uint256 ListState 
     
     (* Error events *)
     let makeErrorEvent =
@@ -165,6 +121,15 @@ async function testBlockchain() {
             {_eventname: "Error"; raisedAt: location; code: errorCode }
     
     (* Error codes *)
+    (*         string constant public version = "Mintable v0.6" ;
+      string constant private NOT_EXISTS_ERROR = 'Listing not found';
+      string constant private EXISTS_ERROR = 'Listing already exists';
+      string constant private PAYMENT_ERROR = 'Transaction value Insufficient';
+      string constant private PERMISSION_ERROR = 'You do not have permission for action';
+      string constant private SIGNATURE_ERROR = 'Provided details could not be authenticated';
+      string constant private TRANSFER_ERROR = 'Token transfer not successful';
+      string constant private DEFINED_ERROR = 'Variable already set';
+      string constant private ACTION_ERROR = 'Action impossible at this time'; *)
     let code_success = Uint32 0
     let code_failure = Uint32 1
     let code_not_authorized = Uint32 2
@@ -178,22 +143,28 @@ async function testBlockchain() {
     (*             The contract definition             *)
     (***************************************************)
     
-    contract NonfungibleToken
-    (contractOwner : ByStr20,
-     name : String,
-     symbol: String
-    )
+    contract NFTDEX
+    (contractOwner : ByStr20)
     
     (* mutable fields *)
     
+    (* Orderbook: mapping (orderIds => ( (tokenA, valueA) (tokenB, valueB) )) *)
+    (* @param: tokenA: Contract address of token A *)
+    (* @param: valueA: total units of token A offered by maker *)
+    (* @param: tokenB: Contract address of token B *)
+    (* @param: valueB: total units of token B requsted by maker *)
+    field orderbook : Map Uint32 Order
+                      = Emp Uint32 Order
+    (* Order info stores the mapping ( orderId => (tokenOwnerAddress, expirationBlock)) *)
+    field orderInfo : Map ByStr32 (Pair (ByStr20)(BNum)) = Emp ByStr32 (Pair (ByStr20) (BNum))
     (* Mapping between tokenId to token owner *)
-    field tokenOwnerMap: Map Uint256 ByStr20 = Emp Uint256 ByStr20
+    field orderOwnerMap: Map Uint256 ByStr20 = Emp Uint256 ByStr20
     (* Mapping from owner to number of owned tokens *)
-    field ownedTokenCount: Map ByStr20 Uint256 = Emp ByStr20 Uint256
+    field ownedOrdersCount: Map ByStr20 Uint256 = Emp ByStr20 Uint256
     
     (* Mapping between tokenId to approved address *)
     (* @dev: There can only be one approved address per token at a given time. *)
-    field tokenApprovals: Map Uint256 ByStr20 = Emp Uint256 ByStr20
+    field tokenApprovals: Map ByStr20 (Map Uint256 Bool)  = Emp  ByStr20 (Map Uint256 Bool)
     
     (* Mapping from owner to operator approvals  *)
     field operatorApprovals: Map ByStr20 (Map ByStr20 Bool) 
@@ -201,242 +172,89 @@ async function testBlockchain() {
     
     (* immutable field *)
     
-    (* @notice Count all NFTs assigned to an owner *)
-    transition balanceOf(address: ByStr20) 
-        optionBal <- ownedTokenCount[address];
-        balance = match optionBal with
-        | Some bal => bal
-        | None => Uint256 0
-        end;
-        e = {_eventname: "balanceOf"; bal: balance};
-        event e
-    end
     
-    
-    (* Get the owner of a particular tokenId *)
-    transition ownerOf(tokenId: Uint256) 
-        someVal <- tokenOwnerMap[tokenId];
-        match someVal with
-        | Some val =>
-            e = {_eventname: "ownerOf"; id: tokenId; owner: val};
-            event e
-        | None =>
-            e = let raisedAt = "ownerOf" in makeErrorEvent raisedAt code_not_found;
-            event e
-        end
-    end
-    
-    (* Get the approval of a token to see if one address can transfer a particular tokenId *)
-    transition checkApproval(from: ByStr20, to: ByStr20, tokenId: Uint256, callback: String) 
-        copy_tokenApprovals <- tokenApprovals;
-        copy_operatorApproval <- operatorApprovals;
-        checkApproved = isApproved from tokenId copy_tokenApprovals;
-        checkApprovedForAll = isApprovedForAll from to copy_operatorApproval;
-        match checkApproved with
-        | True =>
-        msg  = {_tag : callback;
-        _recipient : _sender;
-        _amount : Uint128 0;
-        id: tokenId;
-        owner: from};
-        msgs = one_msg msg;
+    transition checkApproved (contractAddress: ByStr20, tokenID: Uint256)
+     
+      self_DEX = _this_address;
+      zero = Uint128 0;
+        isApprovedCall = {_tag: "CheckApproval";
+        _recipient: contractAddress;
+        _amount: zero;
+        from: _sender;
+        to: self_DEX;
+        tokenID: tokenID;
+        callback: "approved"
+        };
+        msgs = one_msg isApprovedCall;
         send msgs
-        | False =>
-            e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
-            event e
+    
+    end
+    
+    
+    (* @dev Transfer the ownership of a given token ID to another address
+    
+    @param contractAddress - address of NFT contract
+    @param tokenID - address of NFT contract
+    
+    calling: transition transferFrom(from: ByStr20, to: ByStr20, tokenId: Uint256)
+    *)
+    procedure transferNFTtoDEX (contractAddress: ByStr20, tokenID: Uint256)
+    (* take params and make a call to transfer NFT to self.*)
+     self_DEX = _this_address;
+      zero = Uint128 0;
+        transfered = {_tag: "transfer";
+        _recipient: contractAddress;
+        _amount: zero;
+        from: _sender;
+        to: self_DEX;
+        tokenID: tokenID;
+        callback: "approved"
+        };
+        msgs = one_msg transfered;
+        e = { _eventname : "Transfer NFT"; tokenID: tokenID};
+    event e;
+        send msgs
+    end
+    transition approved (tokenId: Uint256, owner: ByStr20, contractAddress: ByStr20, approval: Bool)
+    (* called back from NFT contract if approved*)
+    
+    (* check bool for approval*)
+    match approval with
+    | True =>
+    (* save owner and id in mapping*)
+    tokenApprovals[contractAddress][tokenId] := approval;
+    (*call the transfer function and continue selling NFT*)
+    transferNFTtoDEX contractAddress tokenId
+    | False =>
         end
     end
-    (* @dev:    Mint new tokens. Only contractOwner can mint the token*)
-    (* @param:  to - address of the token recipient                     *)
-    (* @param:  tokenId - token id of the new token                     *)
-    (* Returns error message code_token_exist if token exists           *)
-    transition mint(to: ByStr20, tokenId: Uint256)
-    
-        (* Sender must be the contract owner *)
-        isAuthorized = checkContractOwner contractOwner _sender;
-        match isAuthorized with
-        | True =>
-            currentTokenOwnerMap <- tokenOwnerMap;
-            (* Check if token exists *)
-            tokenExist <- exists tokenOwnerMap[tokenId];
-            match tokenExist with
-            | True =>
-                (* Token exists, return error code *)
-                e = let raisedAt = "mint" in makeErrorEvent raisedAt code_token_exists;
-                event e
-            | False =>
-                (* Mint token *)
-                tokenOwnerMap[tokenId] := to;
-                (* add to owner count *)
-                userCnt <- ownedTokenCount[to];
-                match userCnt with
-                | Some val =>
-                    (* Append to existing results *)
-                    newVal= let one = Uint256 1 in builtin add val one;
-                    ownedTokenCount[to] := newVal
-                | None =>
-                    (* User does not have existing tokens *)
-                    newVal = Uint256 1;
-                    ownedTokenCount[to] := newVal
-                end;
-    
-                (* Emit success event *)
-                e = {_eventname: "Mint successful"; by: _sender; recipient: to; token: tokenId};
-                event e
-            end
-        | False =>
-            (* Unauthorized transaction - sender is not the contract owner*)
-            e = let raisedAt = "mint" in makeErrorEvent raisedAt code_not_authorized;
-            event e
+      (* Create a listing and sell an NFT*)  
+    transition sell (contractAddress: ByStr20, tokenID: Uint256, price: Uint256)    
+    (*  //Take token ownership
+        //update mappings
+        uint256 index = listings.length;
+        Listing memory listing = Listing(_seller, _tokenAddress, _tokenId, _paymentAmount, block.timestamp, ListStates.ACTIVE);
+        listings.push(listing);
+        listingIdToIndex[_listingId] = index;
+        //event
+        emit ListingAdded(msg.sender, _listingId, index); *)
+        state = "ACTIVE";
+        liststate = ListState state;
+        newOrder = Order _sender price contractAddress tokenID liststate;
+        orderbook <- orderbook;
+        length = builtin size orderbook;
+        orderbook[length] := newOrder
         end
-    
         
+          
+    (* Get the owner of a particular tokenId *)
+    transition ownerOf(listingID: Uint32) 
+        order <- orderbook[listingID];
+          e = { _eventname : "OwnerOfListing"; order: order; listingid:  listingID};
+    event e
+       
     end
-    
-    (* @dev Transfer the ownership of a given token ID to another address *)
-    (* @param from:     Current owner of the token                        *)
-    (* @param to:       Recipient address of the token                    *)
-    (* @param tokenId   uint256 id of the token to be transferred         *)
-    transition transferFrom(from: ByStr20, to: ByStr20, tokenId: Uint256)
-        copy_tokenOwnerMap <- tokenOwnerMap;
-        copy_tokenApprovals <- tokenApprovals;
-        copy_operatorApproval <- operatorApprovals;
-    
-        (* Get tokenOwner ByStr20 *)
-        getTokenOwner <- tokenOwnerMap[tokenId];
-        match getTokenOwner with
-        | None =>
-            (* Token not found *)
-            e = let raisedAt = "transferFrom" in makeErrorEvent raisedAt code_not_found;
-            event e
-            
-        | Some tokenOwner =>
-            
-            (* Libary functions to check for conditions *)
-            checkOwner = isTokenOwner _sender tokenId copy_tokenOwnerMap;
-            checkApproved = isApproved _sender tokenId copy_tokenApprovals;
-            checkApprovedForAll = isApprovedForAll _sender tokenOwner copy_operatorApproval;
-    
-            (* Checks if the from is indeed the owner of the token *)
-            isFromTokenOwner = builtin eq tokenOwner from;
-            match isFromTokenOwner with
-            | False =>
-                (* From address is not the same as the tokenOwner    *)
-                e = let raisedAt = "transferFrom" in makeErrorEvent raisedAt code_bad_request;
-                event e
-            | True => 
-                (* isApprovedOrOwner checks if any of the three conditions are met *)
-                isAuthorized = isApprovedOrOwner checkOwner checkApproved checkApprovedForAll;
-    
-                match isAuthorized with
-                | True =>
-                    (* Remove from Approval *)
-                    match checkApproved with
-                    | True =>
-                        (* Remove entry from approvals at the token level *)
-                        delete tokenApprovals[tokenId] 
-                    | False =>
-                    end;
-    
-                    (* Change tokenOwnerMap *)
-                    tokenOwnerMap[tokenId] := to;
-    
-                    (* Change Count *)
-                    curr_otc <- ownedTokenCount;
-    
-                    (*subtract one from previous token owner *)
-                    somePrevBal <- ownedTokenCount[from];
-                    match somePrevBal with
-                    | Some prevBal =>
-                        newBal  = let one = Uint256 1 in builtin sub prevBal one;
-                        ownedTokenCount[from] := newBal
-                    | None =>
-                        e = let raisedAt = "transferFrom" in makeErrorEvent raisedAt code_unexpected_error;
-                        event e
-                    end;
-    
-                    (* add one to the new token owner *)
-                    userCnt <- ownedTokenCount[to];
-                    (* Calculate the new token count value for recipient *)
-                    newVal = let one = Uint256 1 in match userCnt with
-                    | Some val =>
-                        (* Add to existing value *)
-                        builtin add val one
-                    | None => one
-                    end;
-                    ownedTokenCount[to] := newVal; 
-                    e = {_eventname: "transferFrom successful"; from: _sender; recipient: to; token: tokenId}; 
-                    event e
-                | False =>
-                    (* Unauthorized transaction *)
-                    e = let raisedAt = "transferFrom" in makeErrorEvent raisedAt code_not_authorized;
-                    event e
-                end
-            end
-        end
-    end
-    
-    (* @dev: Approves another address to transfer the given token ID                *)
-    (* - There can only be one approved address per token at a given time           *)
-    (* - Absence of entry in tokenApproval indicates there is no approved address   *)
-    (* param: to ByStr20 to be approved for the given token id                      *)
-    (* param: tokenId uint256 id of the token to be apporved                        *)
-    
-    
-    transition approve(to: ByStr20, tokenId: Uint256)
-    
-        copy_tokenOwnerMap <- tokenOwnerMap;
-        copy_operatorApproval <- operatorApprovals;
-    
-        (* Get tokenOwner ByStr20 *)
-        getTokenOwner <- tokenOwnerMap[tokenId];
-        match getTokenOwner with
-        | None =>
-            (* Token not found *)
-            e = let raisedAt = "approve" in makeErrorEvent raisedAt code_not_found;
-            event e
-        | Some tokenOwner =>
-            checkApprovedForAll = isApprovedForAll _sender tokenOwner copy_operatorApproval;
-            checkOwner = isTokenOwner _sender tokenId copy_tokenOwnerMap;
-            isAuthorized = orb checkApprovedForAll checkOwner;
-            match isAuthorized with
-            | True =>
-                (* add to token approval mapping *)
-                tokenApprovals[tokenId] := to;
-                (* Emit event *)
-                e = {_eventname: "Approve successful"; from: _sender; approvedTo: to; token: tokenId};
-                event e
-            | False =>
-                (* Unauthorized transaction *)
-                e = let raisedAt = "approve" in makeErrorEvent raisedAt code_not_authorized;
-                event e
-            end
-        end
-    end
-    
-    (* @dev: sets or unsets the approval of a given operator                *)
-    (* @param: address to be set or unset as operator                       *)
-    (* @param: approved - status of the approval to be set                  *)
-    
-    transition setApprovalForAll(to: ByStr20, approved: Bool)
-    
-        copy_operatorApproval <- operatorApprovals;
-        (* Checks if the _sender is approving himself *)
-        isValidOperation = let check = builtin eq _sender to in negb check;
-        (* require _sender is not approving himself *)
-        match isValidOperation with
-        | True =>
-            (* Check if sender has an existing record on the operatorApproval *)
-            operatorApprovals[_sender][to] := approved;
-            (* Stringify boolean value to be emitted in the event *)
-            approvedStr = bool_to_string approved;
-            e = {_eventname: "setApprovalForAll successful"; from: _sender; recipient: to; status: approvedStr};
-            event e
-        | False =>
-            e = let raisedAt = "setApprovalForAll" in makeErrorEvent raisedAt code_not_authorized;
-            event e
-        end
-    end`;
+    `;
     const codeCaller = `scilla_version 0
     
     library CallerContract
@@ -488,16 +306,6 @@ async function testBlockchain() {
         vname: "contractOwner",
         type: "ByStr20",
         value: `${address}`
-      },
-      {
-        vname: "name",
-        type: "String",
-        value: `test`
-      },
-      {
-        vname: "symbol",
-        type: "String",
-        value: `tst`
       }
     ];
 
@@ -510,12 +318,12 @@ async function testBlockchain() {
     const [deployTx, DEX] = await contract.deploy(
       {
         version: VERSION,
-        gasPrice: new BN(50000000000),
-        gasLimit: new BN(10000)
+        gasPrice: myGasPrice,
+        gasLimit: Long.fromNumber(120000)
       },
-      50,
-      100,
-      true
+      33,
+      1000,
+      false
     );
 
     // Introspect the state of the underlying transaction
