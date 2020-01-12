@@ -315,21 +315,31 @@ async function testBlockchain() {
     // Deploy the contract.
     // Also notice here we have a default function parameter named toDs as mentioned above.
     // A contract can be deployed at either the shard or at the DS. Always set this value to false.
-    const [deployTx, DEX] = await contract.deploy(
+    const [deployTx, DEX] = await contract.deployWithoutConfirm(
       {
         version: VERSION,
         gasPrice: myGasPrice,
-        gasLimit: Long.fromNumber(120000)
+        gasLimit: Long.fromNumber(40000)
       },
-      33,
-      1000,
       false
     );
 
-    // Introspect the state of the underlying transaction
-    console.log(`Deployment Transaction ID: ${deployTx.id}`);
-    console.log(`Deployment Transaction Receipt:`);
-    console.log(deployTx.txParams.receipt);
+    // check the pending status
+    const pendingStatus = await zilliqa.blockchain.getPendingTxn(deployTx.id);
+    console.log(`Pending status is: `);
+    console.log(pendingStatus.result);
+
+    // process confirm
+    console.log(`The transaction id is:`, deployTx.id);
+    console.log(`Waiting transaction be confirmed`);
+    const confirmedTxn = await deployTx.confirm(deployTx.id);
+
+    console.log(`The transaction status is:`);
+    console.log(confirmedTxn.receipt);
+
+    if (confirmedTxn.receipt.success !== true) {
+      return;
+    }
 
     // Get the deployed contract address
     console.log("The DEX contract address is:");
