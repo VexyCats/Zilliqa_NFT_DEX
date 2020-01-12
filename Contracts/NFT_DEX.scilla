@@ -193,7 +193,8 @@ transition sell (contractAddress: ByStr20, tokenID: Uint256, price: Uint256)
 end
     (*
 	QUESTION: Does length need to have length++ or will length return the next value for the code: order <- orderbook[length] where length is the orderID,
-	
+	How to get STATE from listState like ENUM would. 
+	How to revert if not approved 
 	Is there a way to return a value within the same function, or make the returned call hit a private function? To prevent malicious people from calling some function for saling process
     *)
 
@@ -210,5 +211,6 @@ transition ownerOf(listingID: Uint256)
       event e
    
 end
+
 
 
