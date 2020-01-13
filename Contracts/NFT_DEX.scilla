@@ -93,7 +93,35 @@ field operatorApprovals: Map ByStr20 (Map ByStr20 Bool)
 
 (*Transitions*)
 
-
+(* Internal Getters *)
+(* ARE ANY OF THESE POSSIBLE to be internal? *)
+(* index of listing in mapping?
+ function _indexByListingId (bytes32 listingId)
+    internal view returns (uint256)
+  {
+    return listingIdToIndex[listingId];
+  }
+    returns the listing information
+  function _listingByListingId (bytes32 listingId)
+    internal view returns (Listing memory)
+  {
+    return listings[_indexByListingId(listingId)];
+  }
+        checks if exists
+  function _listingIdExists (bytes32 listingId)
+    internal view returns (bool)
+  {
+    Listing memory listing = _listingByListingId(listingId);
+    return (listing.owner != address(0));
+  }
+  *)
+  (* Checks if there is a fee attached to the transaction
+  function _hasFeeValue(uint256 fee)
+    internal view
+  returns (bool) {
+    return msg.value >= fee;
+  }
+  *)
 (* Getters *)
 (* getListing
   function getListing(bytes32 listingId)
@@ -102,6 +130,124 @@ field operatorApprovals: Map ByStr20 (Map ByStr20 Bool)
     Listing memory listing = _listingByListingId(listingId);
     return (listing.owner, listing.tokenAddress, listing.tokenId, listing.paymentAmount, listing.timeAdded, uint256(listing.listState));
   }*)
+  
+  
+  (* Logic transfers *)
+  (* _transferZil from this contract to seller after bought *)
+  (*
+    function _transferZil (address _recipient, uint256 _amount)
+    internal
+  {
+    address(_recipient).transfer(_amount);
+  }
+    
+     transfer NFT to buyer after the sell is complete 
+    
+  function _transferFrom (address _token, address _owner, address _recipient, uint256 _tokenId)
+    internal
+  {
+    IERC721(_token).transferFrom(_owner, _recipient, _tokenId);
+  }
+  *)
+  
+  (*
+  
+  MAIN ORDER LOGIC EXCHANGE *)
+  
+   (*_purchase called with amount and listing id to buy and then confirms
+   info and completes the sell
+   
+    function _purchase (address _buyer, bytes32 _listingId, uint256 _fee)
+    internal
+  {
+    require(_listingIdExists(_listingId), NOT_EXISTS_ERROR);
+
+    Listing memory listing = _listingByListingId(_listingId);
+
+    require(listing.listState == ListStates.ACTIVE, ACTION_ERROR);
+    require(_hasFeeValue(_fee.add(listing.paymentAmount)), PAYMENT_ERROR);
+
+    _buy(_buyer, _listingId);
+  }
+
+  function _trade (address _seller, bytes32 _listingId, address _tokenAddress, uint256 _tokenId, uint256 _paymentAmount, uint256 _fee)
+    internal
+  {
+    require(!_listingIdExists(_listingId), EXISTS_ERROR);
+    require(_hasFeeValue(_fee), PAYMENT_ERROR);
+
+    _sell(_seller, _listingId, _tokenAddress, _tokenId, _paymentAmount);
+  }
+
+  function _cancel (address _seller, bytes32 _listingId)
+    internal
+  {
+    Listing memory listing = _listingByListingId(_listingId);
+    require(listing.owner == _seller, PERMISSION_ERROR);
+    require(listing.listState == ListStates.ACTIVE, ACTION_ERROR);
+
+    listing.listState = ListStates.CANCELLED;
+    _transferFrom(listing.tokenAddress, address(this), listing.owner, listing.tokenId);
+
+    emit ListingRemoved(_listingId);
+  }
+
+  function _suspend (address _admin, bytes32 listingId)
+    internal
+  {
+    require(_isAdmin(_admin), PERMISSION_ERROR);
+    Listing memory listing = _listingByListingId(listingId);
+    require(listing.listState == ListStates.ACTIVE, ACTION_ERROR);
+    listing.listState = ListStates.SUSPENDED;
+
+    emit ListingSuspended(listingId);
+  }
+   // SETTERS
+ /**
+  * @dev Sets the storage contract for storing data
+  * @return  bool true or false
+  */
+  function setSigner(address _addr) public onlyOwner  returns (bool){
+      return _setSigner(_addr);
+  }
+
+  function purchase (bytes32 listingId, uint256 fee, bytes signature )
+    payable public
+  {
+      require(_isValidPurchaseSignature(msg.sender, listingId, fee, signature), SIGNATURE_ERROR);
+      _purchase(msg.sender, listingId, fee);
+  }
+
+  function purchaseFor (address buyer, bytes32 listingId, uint256 fee, bytes signature )
+    payable public
+  {
+      require(_isValidPurchaseSignature(buyer, listingId, fee, signature), SIGNATURE_ERROR);
+      _purchase(buyer, listingId, fee);
+  }
+
+  function trade (bytes32 listingId, address token, uint256 tokenId, uint256 paymentAmount, uint256 fee, bytes signature )
+    public
+  {
+    require(_isValidTradeSignature(msg.sender, listingId, token, tokenId, paymentAmount, fee, signature), SIGNATURE_ERROR);
+    _trade(msg.sender, listingId, token, tokenId,  paymentAmount, fee);
+  }
+
+  function tradeFor (address _seller, bytes32 listingId, address token, uint256 tokenId, uint256 paymentAmount, uint256 fee, bytes signature )
+    public
+  {
+    require(_isValidTradeSignature(_seller, listingId, token, tokenId, paymentAmount, fee, signature), SIGNATURE_ERROR);
+    _trade(_seller, listingId, token, tokenId,  paymentAmount, fee);
+  }
+
+  function cancelTrade (bytes32 _listingId)
+    public
+  {
+    _cancel(msg.sender, _listingId);
+  }
+
+  *)
+  
+  
 transition getListing (listingID: Uint256)
 end
 transition checkApproved (contractAddress: ByStr20, tokenID: Uint256)
@@ -192,10 +338,7 @@ transition sell (contractAddress: ByStr20, tokenID: Uint256, price: Uint256)
   
 end
     (*
-	QUESTION: Does length need to have length++ or will length return the next value for the code: order <- orderbook[length] where length is the orderID,
-	How to get STATE from listState like ENUM would. 
-	How to revert if not approved 
-	Is there a way to return a value within the same function, or make the returned call hit a private function? To prevent malicious people from calling some function for saling process
+    QUESTION: Does length need to have length++ or will length return the next value for the code: order <- orderbook[length] where length is the orderID
     *)
 
   
@@ -211,6 +354,4 @@ transition ownerOf(listingID: Uint256)
       event e
    
 end
-
-
 
