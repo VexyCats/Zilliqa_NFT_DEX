@@ -279,7 +279,7 @@ procedure transferNFTtoDEX (contractAddress: ByStr20, tokenID: Uint256)
 (* take params and make a call to transfer NFT to self.*)
  self_DEX = _this_address;
   zero = Uint128 0;
-    transfered = {_tag: "transfer";
+    transfered = {_tag: "transferFrom";
     _recipient: contractAddress;
     _amount: zero;
     from: _sender;
@@ -293,7 +293,7 @@ event e;
 end
 transition approved (tokenId: Uint256, owner: ByStr20, contractAddress: ByStr20, approval: Bool)
 (* called back from NFT contract if approved*)
-
+(*make sure msg.sender is from the contract address of NFT to prevent malicious*)
 (* check bool for approval*)
 match approval with
 | True =>
@@ -311,6 +311,7 @@ transition sell (contractAddress: ByStr20, tokenID: Uint256, price: Uint256)
     state = "ACTIVE";
     liststate = ListState state; 
     (* get length of listings mapping for listingid *)
+    (* use global variable to track order numbers*)
     temp_length = builtin size orderbook;
     listingID = builtin to_uint256 temp_length;
     (* take listing id and start creating listing*)
@@ -323,9 +324,11 @@ transition sell (contractAddress: ByStr20, tokenID: Uint256, price: Uint256)
       match order with
         | Some (Order owner price contractaddress tokenID listingid liststate)  => 
             (* fire off events *)
+          
          e = {_eventname : "test"; extracted_owner : owner};
         event e
-        | None =>
+       (* _ is global catch all *)
+        | _ =>
             (* Something went wrong *)
          e = {_eventname : "Error1" };
             event e
@@ -337,9 +340,7 @@ transition sell (contractAddress: ByStr20, tokenID: Uint256, price: Uint256)
        
   
 end
-    (*
-    QUESTION: Does length need to have length++ or will length return the next value for the code: order <- orderbook[length] where length is the orderID
-    *)
+    
 
   
      
@@ -354,4 +355,10 @@ transition ownerOf(listingID: Uint256)
       event e
    
 end
+
+
+
+
+
+
 
