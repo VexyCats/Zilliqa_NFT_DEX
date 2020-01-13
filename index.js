@@ -13,11 +13,11 @@ require.extensions[".scilla"] = function(module, filename) {
   module.exports = fs.readFileSync(filename, "utf8");
 };
 
-var codeDEX = require("../Contracts/NFT_DEX.scilla");
+var codeDEX = require("./Contracts/NFT_DEX.scilla");
 // These are set by the core protocol, and may vary per-chain.
 // You can manually pack the bytes according to chain id and msg version.
 // For more information: https://apidocs.zilliqa.com/?shell#getnetworkid
-var codeCaller = require("../Contracts/NFT.scilla");
+var codeCaller = require("./Contracts/NFT.scilla");
 
 const chainId = 333; // chainId of the developer testnet
 const msgVersion = 1; // current msgVersion
