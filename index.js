@@ -17,7 +17,7 @@ var codeDEX = require("./Contracts/NFT_DEX.scilla");
 // These are set by the core protocol, and may vary per-chain.
 // You can manually pack the bytes according to chain id and msg version.
 // For more information: https://apidocs.zilliqa.com/?shell#getnetworkid
-var codeCaller = require("./Contracts/NFT.scilla");
+var codeNFT = require("./Contracts/NFT.scilla");
 
 const chainId = 333; // chainId of the developer testnet
 const msgVersion = 1; // current msgVersion
@@ -142,7 +142,7 @@ async function testBlockchain() {
     // console.log(DEX.address);
     // console.log("The DEX checksum contract address is:");
     // console.log(toChecksumAddress(DEX.address));
-    const initCaller = [
+    const initNFT = [
       // this parameter is mandatory for all init arrays
       /*
 contractOwner : ByStr20,
@@ -175,17 +175,18 @@ contractOwner : ByStr20,
     //   toChecksumAddress(DEX.address)
     // );
     // Instance of class Contract
-    const contractCallee = zilliqa.contracts.new(codeCaller, initCaller);
-    console.log(`Deploying Caller`);
+    const contractNFT = zilliqa.contracts.new(codeNFT, initNFT);
+    console.log(`Deploying NFT`);
     // Deploy the contract.
     // Also notice here we have a default function parameter named toDs as mentioned above.
     // A contract can be deployed at either the shard or at the DS. Always set this value to false.
-    const [deployTx1, Caller] = await contractCallee.deployWithoutConfirm(
+    const [deployTx1, NFT] = await contractNFT.deployWithoutConfirm(
       {
         version: VERSION,
         gasPrice: myGasPrice,
         gasLimit: Long.fromNumber(40000)
-      }, false
+      },
+      false
     );
 
     // check the pending status
@@ -205,12 +206,10 @@ contractOwner : ByStr20,
       return;
     }
 
-
     // Get the deployed contract address
-    console.log(Caller.address);
-    console.log("The Caller checksum contract address is:");
-    console.log(toChecksumAddress(Caller.address));
-
+    console.log(NFT.address);
+    console.log("The NFT checksum contract address is:");
+    console.log(toChecksumAddress(NFT.address));
 
     // Create a new timebased message and call setHello
     // Also notice here we have a default function parameter named toDs as mentioned above.
@@ -224,7 +223,7 @@ contractOwner : ByStr20,
         {
           vname: "to",
           type: "ByStr20",
-          value: toChecksumAddress(Caller.address)
+          value: toChecksumAddress(NFT.address)
         },
         {
           vname: "tokenId",
@@ -244,14 +243,14 @@ contractOwner : ByStr20,
       true
     );
     console.log(JSON.stringify(callMintTx.receipt, null, 4));
-    console.log("Calling Caller to fetch balance transition with: ");
-    const callTx = await Caller.call(
+    console.log("Calling NFT to fetch balance transition with: ");
+    const callTx = await NFT.call(
       "fetchBalance",
       [
         {
           vname: "contractAddress",
           type: "ByStr20",
-          value: toChecksumAddress(Caller.address)
+          value: toChecksumAddress(NFT.address)
         },
         {
           vname: "msgSender",
