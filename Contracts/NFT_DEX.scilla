@@ -268,8 +268,9 @@ field operatorApprovals: Map ByStr20 (Map ByStr20 Bool)
 
 (* Prceedures *)
 procedure checkApproved (contractAddress: ByStr20, tokenID: Uint256)
-     e = { _eventname : "Sender for approval check is: "; msgsender: _sender};
-        event e;
+(* this is to double check that the _sender variable is the user and not the smart contract*)
+e = { _eventname : "Sender for approval check is: "; msgsender: _sender};
+event e;
   self_DEX = _this_address;
   zero = Uint128 0;
     isApprovedCall = {_tag: "CheckApproval";
@@ -408,6 +409,7 @@ transition ownerOf(listingID: Uint256)
       event e
    
 end
+
 
 
 
