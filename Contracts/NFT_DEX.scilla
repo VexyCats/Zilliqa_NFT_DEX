@@ -1,98 +1,4 @@
 scilla_version 0
-
-(***************************************************)
-(*               Associated library                *)
-(***************************************************)
-import BoolUtils ListUtils
-
-library NFT
-
-let one_msg = 
-  fun (msg : Message) => 
-  let nil_msg = Nil {Message} in
-Cons {Message} msg nil_msg
-
-(* Checks and see if an address is a contract owner *)
-let checkContractOwner =
-    fun (msgSender: ByStr20) => 
-    fun (contractOwner: ByStr20) =>
-        builtin eq msgSender contractOwner
-
-type ListState =
-| ListState of String
-
-(*
-ByStr20 - Address of owner
-Uint256 - price
-ByStr20 - address of contract 
-Uint256 - token id
-Uint256 listingID
-*)
- type Order =
-| Order of ByStr20 Uint256 ByStr20 Uint256 Uint256 ListState 
-
-(* Error events *)
-let makeErrorEvent =
-    fun (location: String) =>
-    fun (errorCode: Uint32) =>
-        {_eventname: "Error"; raisedAt: location; code: errorCode }
-
-(* Error codes *)
-(*         string constant public version = "Mintable v0.6" ;
-  string constant private NOT_EXISTS_ERROR = 'Listing not found';
-  string constant private EXISTS_ERROR = 'Listing already exists';
-  string constant private PAYMENT_ERROR = 'Transaction value Insufficient';
-  string constant private PERMISSION_ERROR = 'You do not have permission for action';
-  string constant private SIGNATURE_ERROR = 'Provided details could not be authenticated';
-  string constant private TRANSFER_ERROR = 'Token transfer not successful';
-  string constant private DEFINED_ERROR = 'Variable already set';
-  string constant private ACTION_ERROR = 'Action impossible at this time'; *)
-let code_success = Uint32 0
-let code_failure = Uint32 1
-let code_not_authorized = Uint32 2
-let code_not_found = Uint32 4
-let code_bad_request = Uint32 5
-let code_token_exists = Uint32 6
-let code_unexpected_error = Uint32 9
-
-
-(***************************************************)
-(*             The contract definition             *)
-(***************************************************)
-
-contract NFTDEX
-(contractOwner : ByStr20)
-
-(* mutable fields *)
-
-(* Orderbook: mapping (orderIds => ( (tokenA, valueA) (tokenB, valueB) )) *)
-(* @param: tokenA: Contract address of token A *)
-(* @param: valueA: total units of token A offered by maker *)
-(* @param: tokenB: Contract address of token B *)
-(* @param: valueB: total units of token B requsted by maker *)
-field orderbook : Map Uint256 Order
-                  = Emp Uint256 Order
-(* Order info stores the mapping ( orderId => (tokenOwnerAddress, expirationBlock)) *)
-field orderIDtoOrder : Map ByStr32 (Pair (ByStr20)(BNum)) = Emp ByStr32 (Pair (ByStr20) (BNum))
-(* Mapping between owner and all their orders *)
-field orderOwnerMap: Map ByStr20 List = Emp ByStr20 List
-(* Mapping from owner to number of owned tokens *)
-field ownedOrdersCount: Map ByStr20 Uint256 = Emp ByStr20 Uint256
-
-(* Mapping between tokenId to approved address *)
-(* @dev: There can only be one approved address per token at a given time. *)
-field tokenApprovals: Map ByStr20 (Map Uint256 Bool)  = Emp  ByStr20 (Map Uint256 Bool)
-
-(* Mapping from owner to operator approvals  *)
-field operatorApprovals: Map ByStr20 (Map ByStr20 Bool) 
-                            = Emp ByStr20 (Map ByStr20 Bool)
-(* immutable field *)
-
-
-
-
-(*Transitions*)
-
 (* Internal Getters *)
 (* ARE ANY OF THESE POSSIBLE to be internal? *)
 (* index of listing in mapping?
@@ -123,15 +29,39 @@ field operatorApprovals: Map ByStr20 (Map ByStr20 Bool)
   }
   *)
 (* Getters *)
-(* getListing
+ (*getListing
   function getListing(bytes32 listingId)
     public view returns(address, address, uint256, uint256, uint256, uint256)
   {
     Listing memory listing = _listingByListingId(listingId);
     return (listing.owner, listing.tokenAddress, listing.tokenId, listing.paymentAmount, listing.timeAdded, uint256(listing.listState));
   }*)
-  
-  
+ (* 
+  function _buy (address _buyer, bytes32 _listingId)
+  internal
+{
+  Listing memory listing = _listingByListingId(_listingId);
+
+  listing.listState = ListStates.COMPLETED;
+  _transferEth(listing.owner, listing.paymentAmount);
+  _transferFrom(listing.tokenAddress, address(this), _buyer, listing.tokenId);
+
+  emit ListingCompleted(_listingId, _buyer);
+}
+
+
+function _purchase (address _buyer, bytes32 _listingId, uint256 _fee)
+  internal
+{
+  require(_listingIdExists(_listingId), NOT_EXISTS_ERROR);
+
+  Listing memory listing = _listingByListingId(_listingId);
+
+  require(listing.listState == ListStates.ACTIVE, ACTION_ERROR);
+  require(_hasFeeValue(_fee.add(listing.paymentAmount)), PAYMENT_ERROR);
+
+  _buy(_buyer, _listingId);
+}*)
   (* Logic transfers *)
   (* _transferZil from this contract to seller after bought *)
   (*
@@ -247,11 +177,99 @@ field operatorApprovals: Map ByStr20 (Map ByStr20 Bool)
 
   *)
   
-  
-transition getListing (listingID: Uint256)
-end
-transition checkApproved (contractAddress: ByStr20, tokenID: Uint256)
- 
+(***************************************************)
+(*               Associated library                *)
+(***************************************************)
+import BoolUtils ListUtils
+
+library NFT
+
+let one_msg = 
+  fun (msg : Message) => 
+  let nil_msg = Nil {Message} in
+Cons {Message} msg nil_msg
+
+(* Checks and see if an address is a contract owner *)
+let checkContractOwner =
+    fun (msgSender: ByStr20) => 
+    fun (contractOwner: ByStr20) =>
+        builtin eq msgSender contractOwner
+
+type ListState =
+| ListState of String
+
+(*
+ByStr20 - Address of owner
+Uint256 - price
+ByStr20 - address of contract 
+Uint256 - token id
+Uint256 listingID
+*)
+ type Order =
+| Order of ByStr20 Uint256 ByStr20 Uint256 Uint256 ListState 
+
+(* Error events *)
+let makeErrorEvent =
+    fun (location: String) =>
+    fun (errorCode: Uint32) =>
+        {_eventname: "Error"; raisedAt: location; code: errorCode }
+
+(* Error codes *)
+(*         string constant public version = "Mintable v0.6" ;
+  string constant private NOT_EXISTS_ERROR = 'Listing not found';
+  string constant private EXISTS_ERROR = 'Listing already exists';
+  string constant private PAYMENT_ERROR = 'Transaction value Insufficient';
+  string constant private PERMISSION_ERROR = 'You do not have permission for action';
+  string constant private SIGNATURE_ERROR = 'Provided details could not be authenticated';
+  string constant private TRANSFER_ERROR = 'Token transfer not successful';
+  string constant private DEFINED_ERROR = 'Variable already set';
+  string constant private ACTION_ERROR = 'Action impossible at this time'; *)
+let code_success = Uint32 0
+let code_failure = Uint32 1
+let code_not_authorized = Uint32 2
+let code_not_found = Uint32 4
+let code_bad_request = Uint32 5
+let code_token_exists = Uint32 6
+let code_unexpected_error = Uint32 9
+
+
+(***************************************************)
+(*             The contract definition             *)
+(***************************************************)
+
+contract NFTDEX
+(contractOwner : ByStr20)
+
+(* mutable fields *)
+
+(* Orderbook: mapping (orderIds => ( (tokenA, valueA) (tokenB, valueB) )) *)
+(* @param: tokenA: Contract address of token A *)
+(* @param: valueA: total units of token A offered by maker *)
+(* @param: tokenB: Contract address of token B *)
+(* @param: valueB: total units of token B requsted by maker *)
+field orderbook : Map Uint256 Order
+                  = Emp Uint256 Order
+(* Order info stores the mapping ( orderId => (tokenOwnerAddress, expirationBlock)) *)
+field orderIDtoOrder : Map ByStr32 (Pair (ByStr20)(BNum)) = Emp ByStr32 (Pair (ByStr20) (BNum))
+(* Mapping between owner and all their orders *)
+field orderOwnerMap: Map ByStr20 List = Emp ByStr20 List
+(* Mapping from owner to number of owned tokens *)
+field ownedOrdersCount: Map ByStr20 Uint256 = Emp ByStr20 Uint256
+
+(* Mapping between tokenId to approved address *)
+(* @dev: There can only be one approved address per token at a given time. *)
+field tokenApprovals: Map ByStr20 (Map Uint256 Bool)  = Emp  ByStr20 (Map Uint256 Bool)
+
+(* Mapping from owner to operator approvals  *)
+field operatorApprovals: Map ByStr20 (Map ByStr20 Bool) 
+                            = Emp ByStr20 (Map ByStr20 Bool)
+(* immutable field *)
+
+
+(* Prceedures *)
+procedure checkApproved (contractAddress: ByStr20, tokenID: Uint256)
+     e = { _eventname : "Sender for approval check is: "; msgsender: _sender};
+        event e;
   self_DEX = _this_address;
   zero = Uint128 0;
     isApprovedCall = {_tag: "CheckApproval";
@@ -266,7 +284,6 @@ transition checkApproved (contractAddress: ByStr20, tokenID: Uint256)
     send msgs
 
 end
-
 
 (* @dev Transfer the ownership of a given token ID to another address
 
@@ -291,6 +308,16 @@ procedure transferNFTtoDEX (contractAddress: ByStr20, tokenID: Uint256)
 event e;
     send msgs
 end
+(*Transitions*)
+
+
+  
+transition getListing (listingID: Uint256)
+end
+
+
+
+
 transition approved (tokenId: Uint256, owner: ByStr20, contractAddress: ByStr20, approval: Bool)
 (* called back from NFT contract if approved*)
 (*make sure msg.sender is from the contract address of NFT to prevent malicious*)
@@ -304,12 +331,38 @@ transferNFTtoDEX contractAddress tokenId
 | False =>
     end
 end
-  (* Create a listing and sell an NFT*)  
+
+
+  (* Create a listing and sell an NFT
+  
+   function _sell (address _seller, bytes32 _listingId, address _tokenAddress, uint256 _tokenId, uint256 _paymentAmount)
+  internal
+{
+  //Take token ownership
+  _transferFrom(_tokenAddress, msg.sender, address(this), _tokenId);
+  require(IERC721(_tokenAddress).ownerOf(_tokenId) == address(this), TRANSFER_ERROR);
+
+  uint256 index = listings.length;
+  Listing memory listing = Listing(_seller, _tokenAddress, _tokenId, _paymentAmount, block.timestamp, ListStates.ACTIVE);
+  listings.push(listing);
+  listingIdToIndex[_listingId] = index;
+
+  emit ListingAdded(msg.sender, _listingId, index);
+}
+*)
+
+(* First call from frontend. User wants to post an item for sale. They call this function
+then it will check if approval is okay, if so, then it will transfer 721 to itself,
+and create the listing information and publish it as an item for sale *)
 transition sell (contractAddress: ByStr20, tokenID: Uint256, price: Uint256)    
-    (* get variables *)
+    (* Check approval to see if we can transfer*)
+   checkApproved contractAddress tokenID; 
+   
+   (* get variables *)
     orderbook <- orderbook;
     state = "ACTIVE";
     liststate = ListState state; 
+
     (* get length of listings mapping for listingid *)
     (* use global variable to track order numbers*)
     temp_length = builtin size orderbook;
@@ -355,6 +408,7 @@ transition ownerOf(listingID: Uint256)
       event e
    
 end
+
 
 
 

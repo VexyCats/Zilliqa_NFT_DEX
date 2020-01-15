@@ -80,7 +80,11 @@ let makeErrorEvent =
     fun (location: String) =>
     fun (errorCode: Uint32) =>
         {_eventname: "Error"; raisedAt: location; code: errorCode }
-
+(* Success events *)
+let makeErrorEvent =
+    fun (location: String) =>
+    fun (errorCode: Uint32) =>
+        {_eventname: "Success"; raisedAt: location; code: errorCode }
 (* Error codes *)
 let code_success = Uint32 0
 let code_failure = Uint32 1
@@ -147,18 +151,35 @@ end
 transition checkApproval(from: ByStr20, to: ByStr20, tokenId: Uint256, callback: String) 
     copy_tokenApprovals <- tokenApprovals;
     copy_operatorApproval <- operatorApprovals;
-    checkApproved = isApproved from tokenId copy_tokenApprovals;
-    checkApprovedForAll = isApprovedForAll from to copy_operatorApproval;
+    checkApproved = isApproved to tokenId copy_tokenApprovals;
     match checkApproved with
     | True =>
+        (* Send callback to whatever function specified with a bool for successfully approved*)
+     approved = True;
     msg  = {_tag : callback;
     _recipient : _sender;
     _amount : Uint128 0;
     id: tokenId;
-    owner: from};
+    approvedTo: to;
+    owner: from;
+    approval: approved
+    };
     msgs = one_msg msg;
-    send msgs
+    send msgs;
+      e = let raisedAt = "code_success" in makeErrorEvent raisedAt code_success;
+        event e
     | False =>
+          approved = False;
+    msg  = {_tag : callback;
+    _recipient : _sender;
+    _amount : Uint128 0;
+    id: tokenId;
+    approvedTo: to;
+    owner: from;
+    approval: approved
+    };
+    msgs = one_msg msg;
+    send msgs;
         e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
         event e
     end
@@ -354,5 +375,6 @@ transition setApprovalForAll(to: ByStr20, approved: Bool)
         event e
     end
 end
+
 
 
