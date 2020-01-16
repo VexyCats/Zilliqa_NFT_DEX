@@ -154,12 +154,14 @@ transition checkApproval(from: ByStr20, to: ByStr20, tokenId: Uint256, callback:
     checkApproved = isApproved to tokenId copy_tokenApprovals;
     match checkApproved with
     | True =>
+        (*transition approved (tokenId: Uint256, owner: ByStr20, contractAddress: ByStr20, approval: Bool)*)
         (* Send callback to whatever function specified with a bool for successfully approved*)
      approved = True;
     msg  = {_tag : callback;
     _recipient : _sender;
     _amount : Uint128 0;
-    id: tokenId;
+    tokenId: tokenId;
+    contractAddress: _this_address;
     approvedTo: to;
     owner: from;
     approval: approved
@@ -303,10 +305,120 @@ transition transferFrom(from: ByStr20, to: ByStr20, tokenId: Uint256)
                 | None => one
                 end;
                 ownedTokenCount[to] := newVal; 
+                
                 e = {_eventname: "transferFrom successful"; from: _sender; recipient: to; token: tokenId}; 
                 event e
             | False =>
                 (* Unauthorized transaction *)
+                e = let raisedAt = "transferFrom" in makeErrorEvent raisedAt code_not_authorized;
+                event e
+            end
+        end
+    end
+end
+
+
+(* @dev Transfer the ownership of a given token ID to another address and returns a callback *)
+(* @param from:     Current owner of the token                        *)
+(* @param to:       Recipient address of the token                    *)
+(* @param tokenId   uint256 id of the token to be transferred         *)
+transition transferFromWithCallback(from: ByStr20, to: ByStr20, tokenId: Uint256, callback: String)
+    copy_tokenOwnerMap <- tokenOwnerMap;
+    copy_tokenApprovals <- tokenApprovals;
+    copy_operatorApproval <- operatorApprovals;
+
+    (* Get tokenOwner ByStr20 *)
+    getTokenOwner <- tokenOwnerMap[tokenId];
+    match getTokenOwner with
+    | None =>
+        (* Token not found *)
+        e = let raisedAt = "transferFrom" in makeErrorEvent raisedAt code_not_found;
+        event e
+        
+    | Some tokenOwner =>
+        
+        (* Libary functions to check for conditions *)
+        checkOwner = isTokenOwner _sender tokenId copy_tokenOwnerMap;
+        checkApproved = isApproved _sender tokenId copy_tokenApprovals;
+        checkApprovedForAll = isApprovedForAll _sender tokenOwner copy_operatorApproval;
+
+        (* Checks if the from is indeed the owner of the token *)
+        isFromTokenOwner = builtin eq tokenOwner from;
+        match isFromTokenOwner with
+        | False =>
+            (* From address is not the same as the tokenOwner    *)
+            e = let raisedAt = "transferFrom" in makeErrorEvent raisedAt code_bad_request;
+            event e
+        | True => 
+            (* isApprovedOrOwner checks if any of the three conditions are met *)
+            isAuthorized = isApprovedOrOwner checkOwner checkApproved checkApprovedForAll;
+
+            match isAuthorized with
+            | True =>
+                (* Remove from Approval *)
+                match checkApproved with
+                | True =>
+                    (* Remove entry from approvals at the token level *)
+                    delete tokenApprovals[tokenId] 
+                | False =>
+                end;
+
+                (* Change tokenOwnerMap *)
+                tokenOwnerMap[tokenId] := to;
+
+                (* Change Count *)
+                curr_otc <- ownedTokenCount;
+
+                (*subtract one from previous token owner *)
+                somePrevBal <- ownedTokenCount[from];
+                match somePrevBal with
+                | Some prevBal =>
+                    newBal  = let one = Uint256 1 in builtin sub prevBal one;
+                    ownedTokenCount[from] := newBal
+                | None =>
+                    e = let raisedAt = "transferFrom" in makeErrorEvent raisedAt code_unexpected_error;
+                    event e
+                end;
+
+                (* add one to the new token owner *)
+                userCnt <- ownedTokenCount[to];
+                (* Calculate the new token count value for recipient *)
+                newVal = let one = Uint256 1 in match userCnt with
+                | Some val =>
+                    (* Add to existing value *)
+                    builtin add val one
+                | None => one
+                end;
+                ownedTokenCount[to] := newVal; 
+                
+                (*This is the callback to the contract who transfered the NFT*)
+                temp_bool = True;
+                 success  = {_tag : callback;
+    _recipient : _sender;
+    _amount : Uint128 0;
+    tokenId: tokenId;
+    contractAddress: _this_address;
+    owner: to;
+    success: temp_bool
+    };
+    msgs = one_msg success;
+    send msgs;
+                e = {_eventname: "transferFrom successful"; from: _sender; recipient: to; token: tokenId}; 
+                event e
+            | False =>
+                (* Unauthorized transaction *)
+                  (*This is the callback to the contract who transfered the NFT*)
+                    temp_bool = False;
+    failed  = {_tag : callback;
+    _recipient : _sender;
+    _amount : Uint128 0;
+    tokenId: tokenId;
+    contractAddress: _this_address;
+     owner: to;
+     success: temp_bool
+    };
+    msgs = one_msg failed;
+    send msgs;
                 e = let raisedAt = "transferFrom" in makeErrorEvent raisedAt code_not_authorized;
                 event e
             end
@@ -375,6 +487,7 @@ transition setApprovalForAll(to: ByStr20, approved: Bool)
         event e
     end
 end
+
 
 
 

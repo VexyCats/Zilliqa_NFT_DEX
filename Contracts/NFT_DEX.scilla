@@ -296,7 +296,7 @@ procedure transferNFTtoDEX (contractAddress: ByStr20, tokenID: Uint256)
 (* take params and make a call to transfer NFT to self.*)
  self_DEX = _this_address;
   zero = Uint128 0;
-    transfered = {_tag: "transferFrom";
+    transfered = {_tag: "transferFromWithCallback";
     _recipient: contractAddress;
     _amount: zero;
     from: _sender;
@@ -318,8 +318,17 @@ end
 
 
 
-transition approved (tokenId: Uint256, owner: ByStr20, contractAddress: ByStr20, approval: Bool)
+transition approved (tokenId: Uint256, owner: ByStr20, contractAddress: ByStr20, approvedTo: ByStr20, approval: Bool)
 (* called back from NFT contract if approved*)
+ is_sender = builtin eq contractAddress _sender;
+match is_sender with
+|True =>
+    (*continue logic for selling*)
+  
+|False =>
+e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
+event e
+end;
 (*make sure msg.sender is from the contract address of NFT to prevent malicious*)
 (* check bool for approval*)
 match approval with
@@ -408,6 +417,7 @@ transition ownerOf(listingID: Uint256)
       event e
    
 end
+
 
 
 
