@@ -194,7 +194,17 @@ let checkContractOwner =
     fun (msgSender: ByStr20) => 
     fun (contractOwner: ByStr20) =>
         builtin eq msgSender contractOwner
-
+        
+let checkOrderStatus = 
+    fun (orderStatus: String) =>
+    fun (requiredStatus: String) =>
+        builtin eq orderStatus requiredStatus
+(*
+PENDING
+ACTIVE
+CANCELLED
+SOLD
+*)
 type ListState =
 | ListState of String
 
@@ -241,24 +251,18 @@ contract NFTDEX
 (contractOwner : ByStr20)
 
 (* mutable fields *)
+(*Order IDs*)
+field orderID : Uint256 = Uint256 0
+(* Orderbook: mapping (orderId => ( Order struct ) *)
 
-(* Orderbook: mapping (orderIds => ( (tokenA, valueA) (tokenB, valueB) )) *)
-(* @param: tokenA: Contract address of token A *)
-(* @param: valueA: total units of token A offered by maker *)
-(* @param: tokenB: Contract address of token B *)
-(* @param: valueB: total units of token B requsted by maker *)
 field orderbook : Map Uint256 Order
                   = Emp Uint256 Order
-(* Order info stores the mapping ( orderId => (tokenOwnerAddress, expirationBlock)) *)
-field orderIDtoOrder : Map ByStr32 (Pair (ByStr20)(BNum)) = Emp ByStr32 (Pair (ByStr20) (BNum))
+
 (* Mapping between owner and all their orders *)
 field orderOwnerMap: Map ByStr20 List = Emp ByStr20 List
-(* Mapping from owner to number of owned tokens *)
+(* Mapping from owner to number of owned orders *)
 field ownedOrdersCount: Map ByStr20 Uint256 = Emp ByStr20 Uint256
 
-(* Mapping between tokenId to approved address *)
-(* @dev: There can only be one approved address per token at a given time. *)
-field tokenApprovals: Map ByStr20 (Map Uint256 Bool)  = Emp  ByStr20 (Map Uint256 Bool)
 
 (* Mapping from owner to operator approvals  *)
 field operatorApprovals: Map ByStr20 (Map ByStr20 Bool) 
@@ -296,7 +300,7 @@ procedure transferNFTtoDEX (contractAddress: ByStr20, tokenID: Uint256)
 (* take params and make a call to transfer NFT to self.*)
  self_DEX = _this_address;
   zero = Uint128 0;
-    transfered = {_tag: "transferFromWithCallback";
+    transfered = {_tag: "transferFrom";
     _recipient: contractAddress;
     _amount: zero;
     from: _sender;
@@ -324,21 +328,22 @@ transition approved (tokenId: Uint256, owner: ByStr20, contractAddress: ByStr20,
 match is_sender with
 |True =>
     (*continue logic for selling*)
-  
-|False =>
-e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
-event e
-end;
-(*make sure msg.sender is from the contract address of NFT to prevent malicious*)
-(* check bool for approval*)
-match approval with
+  match approval with
 | True =>
-(* save owner and id in mapping*)
-tokenApprovals[contractAddress][tokenId] := approval;
+
 (*call the transfer function and continue selling NFT*)
 transferNFTtoDEX contractAddress tokenId
 | False =>
+    e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
+event e
     end
+|False =>
+e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
+event e
+end
+(*make sure msg.sender is from the contract address of NFT to prevent malicious*)
+(* check bool for approval*)
+
 end
 
 
@@ -369,7 +374,7 @@ transition sell (contractAddress: ByStr20, tokenID: Uint256, price: Uint256)
    
    (* get variables *)
     orderbook <- orderbook;
-    state = "ACTIVE";
+    state = "PENDING";
     liststate = ListState state; 
 
     (* get length of listings mapping for listingid *)
