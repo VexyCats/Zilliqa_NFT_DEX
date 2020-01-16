@@ -270,7 +270,11 @@ field operatorApprovals: Map ByStr20 (Map ByStr20 Bool)
 (* immutable field *)
 
 
-(* Prceedures *)
+(* 
+-----------
+Prceedures 
+-----------
+*)
 procedure checkApproved (contractAddress: ByStr20, tokenID: Uint256)
      e = { _eventname : "Sender for approval check is: "; msgsender: _sender};
         event e;
@@ -305,16 +309,25 @@ procedure transferNFTtoDEX (contractAddress: ByStr20, tokenID: Uint256)
     _amount: zero;
     from: _sender;
     to: self_DEX;
-    tokenID: tokenID
+    tokenID: tokenID;
+    callback: "CreateOrder"
     };
     msgs = one_msg transfered;
     e = { _eventname : "Transfer NFT"; tokenID: tokenID};
 event e;
     send msgs
 end
-(*Transitions*)
 
 
+(*
+-----------
+Transitions
+-----------
+*)
+
+(*Creates and finalizes their order*)
+transition CreateORder ()
+end
   
 transition getListing (listingID: Uint256)
 end
@@ -330,7 +343,6 @@ match is_sender with
     (*continue logic for selling*)
   match approval with
 | True =>
-
 (*call the transfer function and continue selling NFT*)
 transferNFTtoDEX contractAddress tokenId
 | False =>
