@@ -241,7 +241,6 @@ let code_not_found = Uint32 4
 let code_bad_request = Uint32 5
 let code_token_exists = Uint32 6
 let code_unexpected_error = Uint32 9
-let no_price = Uint32 3
 
 
 (***************************************************)
@@ -346,6 +345,7 @@ transition approved (tokenID: Uint256, owner: ByStr20, contractAddress: ByStr20,
 (* get variables *)
   orderid <- orderID;
    orderbook <- orderbook;
+
   price <- temp_priceMap[orderid];
  is_sender = builtin eq contractAddress _sender;
 match is_sender with
@@ -356,9 +356,9 @@ match is_sender with
              state = "PENDING";
              liststate = ListState state; 
              match price with 
-                 |Some _price => 
+                 |Some v => 
                       (* creating listing and storing in listing mappings*)
-             newOrder = Order _sender _price contractAddress tokenID orderid liststate;
+             newOrder = Order _sender v contractAddress tokenID orderid liststate;
              order <- orderbook[orderid]; 
                  e = {_eventname : "order"; newOrder: newOrder};
                  event e;
@@ -377,12 +377,12 @@ match is_sender with
                      e = {_eventname : "Order Stored"; info: newOrder};
                      getListingID;
                      event e;
+      
                     (*call the transfer function and continue selling NFT*)
                     transferNFTtoDEX contractAddress tokenID
                     end
                   |None => 
-                         e = let raisedAt = "no_price" in makeErrorEvent raisedAt no_price;
-                                    event e
+                      
                       
                       end
                 

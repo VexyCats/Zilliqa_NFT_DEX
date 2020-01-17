@@ -390,7 +390,7 @@ transition ownerOfWithCallback(tokenId: Uint256, callback: String)
     _recipient : _sender;
     _amount : Uint128 0;
   tokenID: tokenId;
-  owner: 0x0000000000000000000000;
+  owner: 0x0000000000000000000000000000000000000000;
   owned: owned
     };
      msgs = one_msg msg;
@@ -545,5 +545,4 @@ transition transferFromWithCallback(from: ByStr20, to: ByStr20, tokenId: Uint256
         end
     end
 end
-
 
