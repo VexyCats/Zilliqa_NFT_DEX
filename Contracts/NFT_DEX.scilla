@@ -241,6 +241,7 @@ let code_not_found = Uint32 4
 let code_bad_request = Uint32 5
 let code_token_exists = Uint32 6
 let code_unexpected_error = Uint32 9
+let no_price = Uint32 3
 
 
 (***************************************************)
@@ -248,16 +249,17 @@ let code_unexpected_error = Uint32 9
 (***************************************************)
 
 contract NFTDEX
-(contractOwner : ByStr20)
+(contractOwner : ByStr20,
+one : Uint256)
 
 (* mutable fields *)
-(*Order IDs*)
+(*Order IDs - use global variable to track order numbers *)
 field orderID : Uint256 = Uint256 0
 (* Orderbook: mapping (orderId => ( Order struct ) *)
 
 field orderbook : Map Uint256 Order
                   = Emp Uint256 Order
-
+field temp_priceMap : Map Uint256 Uint256 = Emp Uint256 Uint256
 (* Mapping between owner and all their orders *)
 field orderOwnerMap: Map ByStr20 List = Emp ByStr20 List
 (* Mapping from owner to number of owned orders *)
@@ -318,7 +320,11 @@ event e;
     send msgs
 end
 
-
+procedure getListingID()
+    orderID <- orderID;
+     e = { _eventname : "ListingID"; orderID: orderID};
+event e
+    end
 (*
 -----------
 Transitions
@@ -326,7 +332,7 @@ Transitions
 *)
 
 (*Creates and finalizes their order*)
-transition CreateORder ()
+transition CreateOrder ()
 end
   
 transition getListing (listingID: Uint256)
@@ -335,24 +341,59 @@ end
 
 
 
-transition approved (tokenId: Uint256, owner: ByStr20, contractAddress: ByStr20, approvedTo: ByStr20, approval: Bool)
-(* called back from NFT contract if approved*)
+transition approved (tokenID: Uint256, owner: ByStr20, contractAddress: ByStr20, approvedTo: ByStr20, approval: Bool)
+(* called back from NFT contract if approved*)  
+(* get variables *)
+  orderid <- orderID;
+   orderbook <- orderbook;
+  price <- temp_priceMap[orderid];
  is_sender = builtin eq contractAddress _sender;
 match is_sender with
-|True =>
+    |True =>
     (*continue logic for selling*)
-  match approval with
-| True =>
-(*call the transfer function and continue selling NFT*)
-transferNFTtoDEX contractAddress tokenId
-| False =>
-    e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
-event e
-    end
-|False =>
-e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
-event e
-end
+     match approval with
+        | True =>
+             state = "PENDING";
+             liststate = ListState state; 
+             match price with 
+                 |Some _price => 
+                      (* creating listing and storing in listing mappings*)
+             newOrder = Order _sender _price contractAddress tokenID orderid liststate;
+             order <- orderbook[orderid]; 
+                 e = {_eventname : "order"; newOrder: newOrder};
+                 event e;
+             (* Store listing info inside the owners mappings and other mappings for references *)
+               match order with
+                 | Some (Order owner price contractaddress tokenID orderid liststate)  => 
+                     (* failure, order already exist - fire off events *)
+                   e = {_eventname : "Order Exists"; extracted_order : order};
+                 event e
+                (* _ is global catch all *)
+                 | _ =>
+                  (*Store their order to orderbook*)
+                    orderbook[orderid] := newOrder;
+                     orderid = builtin add orderid one;
+                     orderID := orderid; 
+                     e = {_eventname : "Order Stored"; info: newOrder};
+                     getListingID;
+                     event e;
+                    (*call the transfer function and continue selling NFT*)
+                    transferNFTtoDEX contractAddress tokenID
+                    end
+                  |None => 
+                         e = let raisedAt = "no_price" in makeErrorEvent raisedAt no_price;
+                                    event e
+                      
+                      end
+                
+        | False =>
+             e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
+            event e
+            end
+    |False =>
+        e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
+        event e
+        end
 (*make sure msg.sender is from the contract address of NFT to prevent malicious*)
 (* check bool for approval*)
 
@@ -382,43 +423,10 @@ then it will check if approval is okay, if so, then it will transfer 721 to itse
 and create the listing information and publish it as an item for sale *)
 transition sell (contractAddress: ByStr20, tokenID: Uint256, price: Uint256)    
     (* Check approval to see if we can transfer*)
-   checkApproved contractAddress tokenID; 
-   
-   (* get variables *)
-    orderbook <- orderbook;
-    state = "PENDING";
-    liststate = ListState state; 
-
-    (* get length of listings mapping for listingid *)
-    (* use global variable to track order numbers*)
-    temp_length = builtin size orderbook;
-    listingID = builtin to_uint256 temp_length;
-    (* take listing id and start creating listing*)
-    match listingID with
-    |Some listingid =>
-        (* creating listing and storing in listing mappings*)
-    newOrder = Order _sender price contractAddress tokenID listingid liststate;
-    order <- orderbook[listingid]; 
-    (* Store listing info inside the owners mappings and other mappings for references *)
-      match order with
-        | Some (Order owner price contractaddress tokenID listingid liststate)  => 
-            (* fire off events *)
-          
-         e = {_eventname : "test"; extracted_owner : owner};
-        event e
-       (* _ is global catch all *)
-        | _ =>
-            (* Something went wrong *)
-         e = {_eventname : "Error1" };
-            event e
-        end
-    | None =>
-         e = {_eventname : "Error1" };
-            event e
-     end
-       
-  
-end
+    orderid <- orderID;
+    temp_priceMap[orderid] := price;
+   checkApproved contractAddress tokenID 
+  end
     
 
   
@@ -434,6 +442,7 @@ transition ownerOf(listingID: Uint256)
       event e
    
 end
+
 
 
 
