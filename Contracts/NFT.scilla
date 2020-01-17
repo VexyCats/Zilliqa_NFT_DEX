@@ -147,45 +147,6 @@ transition ownerOf(tokenId: Uint256)
     end
 end
 
-(* Get the approval of a token to see if one address can transfer a particular tokenId *)
-transition checkApproval(from: ByStr20, to: ByStr20, tokenId: Uint256, callback: String) 
-    copy_tokenApprovals <- tokenApprovals;
-    copy_operatorApproval <- operatorApprovals;
-    checkApproved = isApproved to tokenId copy_tokenApprovals;
-    match checkApproved with
-    | True =>
-        (*transition approved (tokenId: Uint256, owner: ByStr20, contractAddress: ByStr20, approval: Bool)*)
-        (* Send callback to whatever function specified with a bool for successfully approved*)
-     approved = True;
-    msg  = {_tag : callback;
-    _recipient : _sender;
-    _amount : Uint128 0;
-    tokenId: tokenId;
-    contractAddress: _this_address;
-    approvedTo: to;
-    owner: from;
-    approval: approved
-    };
-    msgs = one_msg msg;
-    send msgs;
-      e = let raisedAt = "code_success" in makeErrorEvent raisedAt code_success;
-        event e
-    | False =>
-          approved = False;
-    msg  = {_tag : callback;
-    _recipient : _sender;
-    _amount : Uint128 0;
-    id: tokenId;
-    approvedTo: to;
-    owner: from;
-    approval: approved
-    };
-    msgs = one_msg msg;
-    send msgs;
-        e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
-        event e
-    end
-end
 (* @dev:    Mint new tokens. Only contractOwner can mint the token*)
 (* @param:  to - address of the token recipient                     *)
 (* @param:  tokenId - token id of the new token                     *)
@@ -317,7 +278,166 @@ transition transferFrom(from: ByStr20, to: ByStr20, tokenId: Uint256)
     end
 end
 
+(* @dev: Approves another address to transfer the given token ID                *)
+(* - There can only be one approved address per token at a given time           *)
+(* - Absence of entry in tokenApproval indicates there is no approved address   *)
+(* param: to ByStr20 to be approved for the given token id                      *)
+(* param: tokenId uint256 id of the token to be apporved                        *)
 
+
+transition approve(to: ByStr20, tokenId: Uint256)
+
+    copy_tokenOwnerMap <- tokenOwnerMap;
+    copy_operatorApproval <- operatorApprovals;
+
+    (* Get tokenOwner ByStr20 *)
+    getTokenOwner <- tokenOwnerMap[tokenId];
+    match getTokenOwner with
+    | None =>
+        (* Token not found *)
+        e = let raisedAt = "approve" in makeErrorEvent raisedAt code_not_found;
+        event e
+    | Some tokenOwner =>
+        checkApprovedForAll = isApprovedForAll _sender tokenOwner copy_operatorApproval;
+        checkOwner = isTokenOwner _sender tokenId copy_tokenOwnerMap;
+        isAuthorized = orb checkApprovedForAll checkOwner;
+        match isAuthorized with
+        | True =>
+            (* add to token approval mapping *)
+            tokenApprovals[tokenId] := to;
+            (* Emit event *)
+            e = {_eventname: "Approve successful"; from: _sender; approvedTo: to; token: tokenId};
+            event e
+        | False =>
+            (* Unauthorized transaction *)
+            e = let raisedAt = "approve" in makeErrorEvent raisedAt code_not_authorized;
+            event e
+        end
+    end
+end
+
+
+(* @dev: sets or unsets the approval of a given operator                *)
+(* @param: address to be set or unset as operator                       *)
+(* @param: approved - status of the approval to be set                  *)
+
+transition setApprovalForAll(to: ByStr20, approved: Bool)
+
+    copy_operatorApproval <- operatorApprovals;
+    (* Checks if the _sender is approving himself *)
+    isValidOperation = let check = builtin eq _sender to in negb check;
+    (* require _sender is not approving himself *)
+    match isValidOperation with
+    | True =>
+        (* Check if sender has an existing record on the operatorApproval *)
+        operatorApprovals[_sender][to] := approved;
+        (* Stringify boolean value to be emitted in the event *)
+        approvedStr = bool_to_string approved;
+        e = {_eventname: "setApprovalForAll successful"; from: _sender; recipient: to; status: approvedStr};
+        event e
+    | False =>
+        e = let raisedAt = "setApprovalForAll" in makeErrorEvent raisedAt code_not_authorized;
+        event e
+    end
+end
+
+(* 
+------------------
+CALLBACK FUNCTIONS 
+------------------
+*)
+
+transition balanceOfWithCallback(address: ByStr20, callback: String) 
+    optionBal <- ownedTokenCount[address];
+    balance = match optionBal with
+    | Some bal => bal
+    | None => Uint256 0
+    end;
+    e = {_eventname: "balanceOf"; bal: balance};
+    event e;
+      msg  = {_tag : callback;
+    _recipient : _sender;
+    _amount : Uint128 0;
+  address: address;
+  balance: balance
+    };
+    msgs = one_msg msg;
+    send msgs
+end
+
+
+(* Get the owner of a particular tokenId *)
+transition ownerOfWithCallback(tokenId: Uint256, callback: String) 
+    someVal <- tokenOwnerMap[tokenId];
+    match someVal with
+    | Some owner =>
+        e = {_eventname: "ownerOf"; id: tokenId; owner: owner};
+        event e;
+        owned = True;
+          msg  = {_tag : callback;
+    _recipient : _sender;
+    _amount : Uint128 0;
+  tokenID: tokenId;
+  owner: owner;
+  owned: owned
+    };
+    msgs = one_msg msg;
+    send msgs
+    | None =>
+             owned = False;
+             
+          msg  = {_tag : callback;
+    _recipient : _sender;
+    _amount : Uint128 0;
+  tokenID: tokenId;
+  owner: 0x0000000000000000000000;
+  owned: owned
+    };
+     msgs = one_msg msg;
+    send msgs;
+        e = let raisedAt = "ownerOf" in makeErrorEvent raisedAt code_not_found;
+        event e
+    end
+end
+(* Get the approval of a token to see if one address can transfer a particular tokenId *)
+transition checkApproval(from: ByStr20, to: ByStr20, tokenId: Uint256, callback: String) 
+    copy_tokenApprovals <- tokenApprovals;
+    copy_operatorApproval <- operatorApprovals;
+    checkApproved = isApproved to tokenId copy_tokenApprovals;
+    match checkApproved with
+    | True =>
+        (*transition approved (tokenId: Uint256, owner: ByStr20, contractAddress: ByStr20, approval: Bool)*)
+        (* Send callback to whatever function specified with a bool for successfully approved*)
+     approved = True;
+    msg  = {_tag : callback;
+    _recipient : _sender;
+    _amount : Uint128 0;
+    tokenId: tokenId;
+    contractAddress: _this_address;
+    approvedTo: to;
+    owner: from;
+    approval: approved
+    };
+    msgs = one_msg msg;
+    send msgs;
+      e = let raisedAt = "code_success" in makeErrorEvent raisedAt code_success;
+        event e
+    | False =>
+          approved = False;
+    msg  = {_tag : callback;
+    _recipient : _sender;
+    _amount : Uint128 0;
+    id: tokenId;
+    approvedTo: to;
+    owner: from;
+    approval: approved
+    };
+    msgs = one_msg msg;
+    send msgs;
+        e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
+        event e
+    end
+end
 (* @dev Transfer the ownership of a given token ID to another address and returns a callback *)
 (* @param from:     Current owner of the token                        *)
 (* @param to:       Recipient address of the token                    *)
@@ -425,69 +545,5 @@ transition transferFromWithCallback(from: ByStr20, to: ByStr20, tokenId: Uint256
         end
     end
 end
-
-(* @dev: Approves another address to transfer the given token ID                *)
-(* - There can only be one approved address per token at a given time           *)
-(* - Absence of entry in tokenApproval indicates there is no approved address   *)
-(* param: to ByStr20 to be approved for the given token id                      *)
-(* param: tokenId uint256 id of the token to be apporved                        *)
-
-
-transition approve(to: ByStr20, tokenId: Uint256)
-
-    copy_tokenOwnerMap <- tokenOwnerMap;
-    copy_operatorApproval <- operatorApprovals;
-
-    (* Get tokenOwner ByStr20 *)
-    getTokenOwner <- tokenOwnerMap[tokenId];
-    match getTokenOwner with
-    | None =>
-        (* Token not found *)
-        e = let raisedAt = "approve" in makeErrorEvent raisedAt code_not_found;
-        event e
-    | Some tokenOwner =>
-        checkApprovedForAll = isApprovedForAll _sender tokenOwner copy_operatorApproval;
-        checkOwner = isTokenOwner _sender tokenId copy_tokenOwnerMap;
-        isAuthorized = orb checkApprovedForAll checkOwner;
-        match isAuthorized with
-        | True =>
-            (* add to token approval mapping *)
-            tokenApprovals[tokenId] := to;
-            (* Emit event *)
-            e = {_eventname: "Approve successful"; from: _sender; approvedTo: to; token: tokenId};
-            event e
-        | False =>
-            (* Unauthorized transaction *)
-            e = let raisedAt = "approve" in makeErrorEvent raisedAt code_not_authorized;
-            event e
-        end
-    end
-end
-
-(* @dev: sets or unsets the approval of a given operator                *)
-(* @param: address to be set or unset as operator                       *)
-(* @param: approved - status of the approval to be set                  *)
-
-transition setApprovalForAll(to: ByStr20, approved: Bool)
-
-    copy_operatorApproval <- operatorApprovals;
-    (* Checks if the _sender is approving himself *)
-    isValidOperation = let check = builtin eq _sender to in negb check;
-    (* require _sender is not approving himself *)
-    match isValidOperation with
-    | True =>
-        (* Check if sender has an existing record on the operatorApproval *)
-        operatorApprovals[_sender][to] := approved;
-        (* Stringify boolean value to be emitted in the event *)
-        approvedStr = bool_to_string approved;
-        e = {_eventname: "setApprovalForAll successful"; from: _sender; recipient: to; status: approvedStr};
-        event e
-    | False =>
-        e = let raisedAt = "setApprovalForAll" in makeErrorEvent raisedAt code_not_authorized;
-        event e
-    end
-end
-
-
 
 
