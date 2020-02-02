@@ -59,10 +59,6 @@ one : Uint256)
 (*Order IDs - use global variable to track order numbers *)
 field orderID : Uint256 = Uint256 0
 (* Orderbook: mapping (orderId => ( Order struct ) *)
-<<<<<<< HEAD
-=======
-
->>>>>>> 8e1a75696d7dcb843e6221d31fd8e8d133f5ec32
 field orderbook : Map Uint256 Order
                   = Emp Uint256 Order
 field temp_orderbook : Map ByStr20 (Map Uint256 Order)
@@ -130,71 +126,6 @@ procedure transferNFTtoDEX (contractAddress: ByStr20, tokenID: Uint256)
 end
 
 
-(*Callback Transitions*)
-transition getApprovedCallBack(approved_addr: ByStr20, tokenID: Uint256)
-(* called back from NFT contract if approved*)  
-(* get variables *)
-  is_sender = builtin eq _this_address approved_addr;
-     match is_sender with
-        |False =>
-            (*Not approved to transfer NFT*)
-           delete temp_orderbook[_sender][tokenID];
-           e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
-            event e
-        | True =>
-            (*Approved to transfer NFT - call TransferFrom on NFT*)
-            tempOrder <- temp_orderbook[_sender][tokenID];
-            match tempOrder with 
-                 |Some (Order owner price contractaddress tokenID orderid liststate) => 
-                      (* creating listing and storing in listing mappings*)
-                    transferNFTtoDEX owner tokenID
-             
-             
-                   |None => 
-                        (* failure, order not found - fire off events *)
-                        e = let raisedAt = "order_not_found" in makeErrorEvent raisedAt order_not_found;
-                         event e
-                      end
-                      
-          
-            end
- end
-
-transition transferFromSuccessCallBack(from: ByStr20, to: ByStr20, tokenID: Uint256)
-    tempOrder <- temp_orderbook[_sender][tokenID];
-            match tempOrder with 
-                 |Some (Order owner price contractaddress tokenID orderid liststate) => 
-                      (* creating listing and storing in listing mappings*)
-                      tempPending = "PENDING";
-                      is_pending = checkOrderStatus tempPending liststate;   
-                      (*Approved to transfer NFT - check orderID is pending*)
-                    match is_pending with
-                        |True =>
-                        (* Store listing info inside the owners mappings and order mappings for references *)
-                         state = "ACTIVE";
-                         newOrder = Order owner price contractaddress tokenID orderid state;
-                         orderbook[orderid] := newOrder;
-                         delete temp_orderbook[contractaddress][tokenID]
-                        (*=======================================================================================================================*)
-                         (* TODO *)
-                         (*add order to the list of orders for an address*)
-                         
-                        (*=======================================================================================================================*)
-                        
-                        |False =>
-                         (* failure, order not pending - fire off events *)
-                         e = {_eventname : "Order State invalid"; extracted_order : orderid; order_state: liststate};
-                         event e
-                         end
-             
-             
-                   |None => 
-                        (* failure, order not found - fire off events *)
-                        e = let raisedAt = "order_not_found" in makeErrorEvent raisedAt order_not_found;
-                         event e
-            end
-                      
-end
 
 (*Callback Transitions*)
 transition getApprovedCallBack(approved_addr: ByStr20, tokenID: Uint256)
@@ -262,22 +193,6 @@ transition transferFromSuccessCallBack(from: ByStr20, to: ByStr20, tokenID: Uint
                       
 end
 
-(* Create a listing and sell an NFT*) 
-(* First call from frontend. User wants to post an item for sale. They call this function *)
-(* then it will check if approval is okay, if so, then it will transfer 721 to itself, *)
-(* and create the listing information and publish it as an item for sale *)
-transition sell (contractAddress: ByStr20, tokenID: Uint256, price: Uint256)    
-    (* Create a temporary order that is pending to be used as reference in callbacks*)
-    liststate  = "PENDING";
-    orderid <- orderID;
-    newOrder = Order _sender price contractAddress tokenID orderid liststate;
-    temp_orderbook[contractAddress][tokenID] := newOrder;
-    orderid = builtin add orderid one;
-    orderID := orderid; 
-     (* Check approval to see if we can transfer*)
-    checkApproved contractAddress tokenID 
-end
-    
 
 (*Transitions*)
 (* Cancel a a listing, remove it, and transfer NFT back to owner*) 
@@ -398,8 +313,6 @@ transition transferNFT (contractAddress : ByStr20, tokenID: Uint256, to: ByStr20
             event e 
         end
 end
-
-
 
 
 
