@@ -36,21 +36,14 @@ let makeErrorEvent =
         {_eventname: "Error"; raisedAt: location; code: errorCode }
 
 (* Error codes *)
-(*         string constant public version = "Mintable v0.6" ;*)
-(*   string constant private NOT_EXISTS_ERROR = 'Listing not found';*)
-(*   string constant private EXISTS_ERROR = 'Listing already exists';*)
-(*   string constant private PAYMENT_ERROR = 'Transaction value Insufficient';*)
-(*   string constant private PERMISSION_ERROR = 'You do not have permission for action';*)
-(*   string constant private SIGNATURE_ERROR = 'Provided details could not be authenticated';*)
-(*   string constant private TRANSFER_ERROR = 'Token transfer not successful';*)
-(*   string constant private DEFINED_ERROR = 'Variable already set';*)
-(*   string constant private ACTION_ERROR = 'Action impossible at this time'; *)
+
 let code_success = Uint32 0
 let code_failure = Uint32 1
 let code_not_authorized = Uint32 2
 let order_not_found = Uint32 4
 let code_bad_request = Uint32 5
 let code_token_exists = Uint32 6
+let payment_amount_error = Uint32 7
 let code_unexpected_error = Uint32 9
 
 
@@ -182,7 +175,7 @@ transition transferFromSuccessCallBack(from: ByStr20, to: ByStr20, tokenID: Uint
                          delete temp_orderbook[contractaddress][tokenID]
                         (*=======================================================================================================================*)
                          (* TODO *)
-                         (*add order to the list of orders for address*)
+                         (*add order to the list of orders for an address*)
                          
                         (*=======================================================================================================================*)
                         
