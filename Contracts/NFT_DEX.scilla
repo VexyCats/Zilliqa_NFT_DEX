@@ -5,13 +5,18 @@ scilla_version 0
 (***************************************************)
 import BoolUtils ListUtils
 
-library NFT
+library NFTDEX
 
 let one_msg = 
   fun (msg : Message) => 
   let nil_msg = Nil {Message} in
 Cons {Message} msg nil_msg
 
+let two_msgs =
+fun (msg1 : Message) =>
+fun (msg2 : Message) =>
+  let msgs_tmp = one_msg msg2 in
+  Cons {Message} msg1 msgs_tmp
         
 let checkOrderStatus = 
     fun (orderStatus: String) =>
@@ -40,6 +45,7 @@ let makeErrorEvent =
 let code_success = Uint32 0
 let code_failure = Uint32 1
 let code_not_authorized = Uint32 2
+let order_wrong_state = Uint32 3
 let order_not_found = Uint32 4
 let dex_not_approved_to_transfer = Uint32 5
 let code_token_exists = Uint32 6
@@ -65,7 +71,7 @@ field temp_orderbook : Map ByStr20 (Map Uint256 Order)
                             = Emp ByStr20 (Map Uint256 Order)         
 
 (* Mapping between owner and all their orders *)
-field orderOwnerList: Map ByStr20 List = Emp ByStr20 List
+field orderOwnerList: Map ByStr20 (List Uint256) = Emp ByStr20 (List Uint256)
 (* Fee taken from each purchase, 10% of price *)
 field dexFee: Uint128 = Uint128 10
 
@@ -85,9 +91,7 @@ procedure checkApproved (contractAddress: ByStr20, tokenID: Uint256)
     send msgs
 
 end
-
 (* @dev Transfer the ownership of a given token ID to another address*)
-
 (*@param contractAddress - address of NFT contract*)
 (*@param tokenID - address of NFT contract*)
 procedure transferNFTtoOwner (contractAddress: ByStr20, tokenID: Uint256, owner: ByStr20)
@@ -99,7 +103,7 @@ procedure transferNFTtoOwner (contractAddress: ByStr20, tokenID: Uint256, owner:
     tokenID: tokenID
         };
     msgs = one_msg transfered;
-    e = { _eventname : "Transfer NFT back to person"; tokenID: tokenID};
+    e = { _eventname : "Transfer NFT back to owner"; tokenID: tokenID};
     event e;
     send msgs
 end
@@ -117,15 +121,29 @@ procedure transferNFTtoDEX (contractAddress: ByStr20, tokenID: Uint256)
     from: _sender;
     to: self_DEX;
     tokenID: tokenID
-    
     };
     msgs = one_msg transfered;
     e = { _eventname : "Transfer NFT to DEX"; tokenID: tokenID};
     event e;
     send msgs
 end
-
-
+(* Create a listing and sell an NFT*) 
+(* First call from frontend. User wants to post an item for sale. They call this function *)
+(* then it will check if approval is okay, if so, then it will transfer 721 to itself, *)
+(* and create the listing information and publish it as an item for sale *)
+transition sell (contractAddress: ByStr20, tokenID: Uint256, price: Uint128)    
+    (* Create a temporary order that is pending to be used as reference in callbacks*)
+    liststate  = "PENDING";
+    orderid <- orderID;
+    newOrder = Order _sender price contractAddress tokenID orderid liststate;
+    temp_orderbook[contractAddress][tokenID] := newOrder;
+    orderid = builtin add orderid one;
+    orderID := orderid; 
+     e = {_eventname : "Order Pending Successful"; extracted_orderid : orderid; order: newOrder};
+     event e;
+     (* Check approval to see if we can transfer*)
+    checkApproved contractAddress tokenID 
+end
 
 (*Callback Transitions*)
 transition getApprovedCallBack(approved_addr: ByStr20, tokenID: Uint256)
@@ -144,10 +162,18 @@ transition getApprovedCallBack(approved_addr: ByStr20, tokenID: Uint256)
             match tempOrder with 
                  |Some (Order owner price contractaddress tokenID orderid liststate) => 
                       (* creating listing and storing in listing mappings*)
-                    transferNFTtoDEX owner tokenID
-             
-             
-                   |None => 
+                    tempPending = "PENDING";
+                    is_pending = checkOrderStatus tempPending liststate;   
+                    match is_pending with
+                        |True =>
+                             e = {_eventname : "Token Approved Successfully - Now calling transfer"; extracted_orderid : orderid; token_id: tokenID};
+                            event e;
+                            transferNFTtoDEX owner tokenID
+                        |False =>
+                            e = let raisedAt = "order_wrong_state" in makeErrorEvent raisedAt order_wrong_state;
+                            event e
+                        end
+                 |None => 
                         (* failure, order not found - fire off events *)
                         e = let raisedAt = "order_not_found" in makeErrorEvent raisedAt order_not_found;
                          event e
@@ -171,21 +197,25 @@ transition transferFromSuccessCallBack(from: ByStr20, to: ByStr20, tokenID: Uint
                          state = "ACTIVE";
                          newOrder = Order owner price contractaddress tokenID orderid state;
                          orderbook[orderid] := newOrder;
-                         delete temp_orderbook[contractaddress][tokenID]
-                        (*=======================================================================================================================*)
-                         (* TODO *)
-                         (*add order to the list of orders for an address*)
-                         
-                        (*=======================================================================================================================*)
-                        
-                        |False =>
-                         (* failure, order not pending - fire off events *)
-                         e = {_eventname : "Order State invalid"; extracted_order : orderid; order_state: liststate};
+                         delete temp_orderbook[contractaddress][tokenID];
+                         orderList <- orderOwnerList[owner];
+                    match orderList with 
+                        |Some v =>
+                         new_lists = Cons {Uint256} orderid v;
+                         orderOwnerList[owner] := new_lists;
+                         e = {_eventname : "Order Listed Successful"; extracted_orderid : orderid; order: newOrder};
+                         event e
+                        |None=>
+                                  (* failure, order not pending - fire off events *)
+                         e = {_eventname : "Order owner list mismatch"; extracted_order : orderid; order_state: orderList};
                          event e
                          end
-             
-             
-                   |None => 
+                        |False =>
+                         (* failure, order not pending - fire off events *)
+                         e = let raisedAt = "order_wrong_state" in makeErrorEvent raisedAt order_wrong_state;
+                         event e
+                         end
+                    |None => 
                         (* failure, order not found - fire off events *)
                         e = let raisedAt = "order_not_found" in makeErrorEvent raisedAt order_not_found;
                          event e
@@ -193,9 +223,62 @@ transition transferFromSuccessCallBack(from: ByStr20, to: ByStr20, tokenID: Uint
                       
 end
 
+(* Purchase an order/NFT that is for sale*)     
+transition purchase (orderID: Uint256)    
+accept;
+listing <- orderbook[orderID];
+dexFEE <- dexFee;
+    match listing with
+    |Some (Order owner price contractaddress tokenID orderid liststate) =>  
+           tempActive = "ACTIVE";
+           is_active = checkOrderStatus tempActive liststate;  
+                match is_active with
+                |True => 
+                    (*Order is active! Check amount is right*)
+                is_amount_correct = builtin eq _amount price;
+                match is_amount_correct with
+                    |True => 
+                        (* amount is correct go ahead and remove order and transfer NFT plus funds*)
+                        (* remove fee from the purchase amount*)
+                        sellersAmount = builtin sub _amount dexFEE;
+                        (* Edit the listing state and update the orderbook*)
+                         state = "SOLD";
+                         newOrder = Order _sender price contractaddress tokenID orderid state;
+                         orderbook[orderID] := newOrder;
+                         (* transfer NFT to new owner*)
+                         (* ==== QUESTION ==== : Can I call transferNFT and THEN transfer ZIL to owner within this one procedure using two_msgs?*)
+                           zero = Uint128 0;
+                        nftTransfered = {_tag: "transfer";
+                        _recipient: contractaddress;
+                        _amount: zero;
+                        to: _sender;
+                        tokenID: tokenID
+                            };
+                        sendPayment = {_tag : ""; _recipient : owner; _amount : sellersAmount};
+                        e = { _eventname : "Transfer NFT back to owner and send payment to seller"; order: orderID; tokenID: tokenID; buyers_address: _sender; seller_payment : sellersAmount; seller_address : owner};
+                        event e;
+                        msgs = two_msgs nftTransfered sendPayment;
+                        send msgs
+                         
+                    |False =>
+                        e = let raisedAt = "payment_amount_error" in makeErrorEvent raisedAt payment_amount_error;
+                        event e 
+                    end
+                |False => 
+                 (* failure, order is not active *)
+                    e = {_eventname : "Order State invalid"; extracted_order : orderid; order_state: liststate};
+                    event e
+                end
+    |None => 
+           (* failure, order not found - fire off events *)
+            e = let raisedAt = "order_not_found" in makeErrorEvent raisedAt order_not_found;
+            event e 
+    end
 
-(*Transitions*)
+end
+
 (* Cancel a a listing, remove it, and transfer NFT back to owner*) 
+(* Only performed by owner of listing*)
 transition cancelListing (orderID : Uint256)
     listing <- orderbook[orderID];
     match listing with
@@ -231,30 +314,6 @@ transition cancelListing (orderID : Uint256)
             event e 
     end
 end
-
-(* Create a listing and sell an NFT*) 
-(* First call from frontend. User wants to post an item for sale. They call this function *)
-(* then it will check if approval is okay, if so, then it will transfer 721 to itself, *)
-(* and create the listing information and publish it as an item for sale *)
-transition sell (contractAddress: ByStr20, tokenID: Uint256, price: Uint128)    
-    (* Create a temporary order that is pending to be used as reference in callbacks*)
-    liststate  = "PENDING";
-    orderid <- orderID;
-    newOrder = Order _sender price contractAddress tokenID orderid liststate;
-    temp_orderbook[contractAddress][tokenID] := newOrder;
-    orderid = builtin add orderid one;
-    orderID := orderid; 
-     (* Check approval to see if we can transfer*)
-    checkApproved contractAddress tokenID 
-end
-    
-
-(* Purchase an order/NFT that is for sale*)     
-transition purchase (orderID: ByStr20)    
-accept
-
-end
-
 (* admin functions *)
     
 (*Withdrawal balance of contract *)
@@ -276,6 +335,7 @@ transition withdrawal (to: ByStr20)
         end
 end
 (* Cancel an order and refund the NFT *)
+(* only performed by admin*)
 transition cancelOrder (orderID: Uint256)
     is_contractOwner = builtin eq _sender contractOwner;
       match is_contractOwner with
@@ -283,8 +343,12 @@ transition cancelOrder (orderID: Uint256)
            listing <- orderbook[orderID];
            match listing with
            |Some (Order owner price contractaddress tokenID orderid liststate) =>  
-                        (*Order is active! Go ahead and delete and return NFT*)
-                        delete orderbook[orderID];
+                         (* Edit the listing state and update the orderbook*)
+                         state = "CANCELLED";
+                         newOrder = Order owner price contractaddress tokenID orderid state;
+                         orderbook[orderID] := newOrder;
+                         e = {_eventname : "Admin cancelled Order"; order_ID : orderID; new_state: state};
+                         event e;
                         (*transfer NFT to owner*)
                         transferNFTtoOwner contractaddress tokenID owner
                        
@@ -300,20 +364,33 @@ transition cancelOrder (orderID: Uint256)
         end
         
 end
+
 (* send NFT to person in case something goes wrong - to return their NFT *)
 transition transferNFT (contractAddress : ByStr20, tokenID: Uint256, to: ByStr20)
   is_contractOwner = builtin eq _sender contractOwner;
       match is_contractOwner with
         |True =>
             transferNFTtoOwner contractAddress tokenID to
-                      
         |False =>
         (* failure, sender not owner *)
             e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
             event e 
         end
 end
-
+transition changeDEXfee (fee: Uint128)
+  is_contractOwner = builtin eq _sender contractOwner;
+  oldDEXfee <- dexFee;
+      match is_contractOwner with
+        |True =>
+        dexFee := fee;
+        e = {_eventname : "DEX fee changed"; previous_Amount : oldDEXfee; new_fee: fee};
+        event e
+        |False =>
+        (* failure, sender not owner *)
+            e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
+            event e 
+        end
+end
 
 
 
