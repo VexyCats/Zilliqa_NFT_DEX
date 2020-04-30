@@ -80,7 +80,8 @@ type Unit =
 contract NonfungibleToken
 (contract_owner: ByStr20,
   name : String,
-  symbol: String
+  symbol: String,
+  dex_address: ByStr20
 )
 
 (* Mutable fields *)
@@ -262,7 +263,11 @@ transition mint(to: ByStr20, token_id: Uint256, token_uri: String)
       current_supply <- total_supply;
       new_supply = builtin add current_supply one;
       total_supply := new_supply; 
-      (* Emit success event *)
+      (* Approve DEX for transfer *)
+        token_approvals[token_id] := dex_address;
+        (* Emit event *)
+        e = {_eventname: "AddApprovalSuccess"; initiator: _sender; approved_addr: dex_address; token: token_id};
+        event e;
       e = {_eventname: "MintSuccess"; by: _sender; recipient: to;
            token_id: token_id; token_uri: token_uri};
       event e;
@@ -513,4 +518,3 @@ transition setApprovalForAll(to: ByStr20, approved: Bool)
     EmitError err
   end
 end
-
