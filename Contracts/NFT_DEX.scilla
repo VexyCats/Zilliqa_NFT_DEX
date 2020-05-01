@@ -111,19 +111,19 @@ end
 
 (*@param contractAddress - address of NFT contract*)
 (*@param tokenID - address of NFT contract*)
-procedure transferNFTtoDEX (contractAddress: ByStr20, tokenID: Uint256)
+procedure transferNFTtoDEX (contractAddress: ByStr20, owner: ByStr20, tokenID: Uint256)
 (* take params and make a call to transfer NFT to self.*)
  self_DEX = _this_address;
   zero = Uint128 0;
     transfered = {_tag: "transferFrom";
     _recipient: contractAddress;
     _amount: zero;
-    from: _sender;
+    from: owner;
     to: self_DEX;
     token_id: tokenID
     };
     msgs = one_msg transfered;
-    e = { _eventname : "Transfer NFT to DEX"; tokenID: tokenID};
+    e = { _eventname : "Transfer NFT to DEX"; owner: owner; contract_address: contractAddress; tokenID: tokenID};
     event e;
     send msgs
 end
@@ -168,7 +168,7 @@ transition getApprovedCallBack(approved_addr: ByStr20, tokenID: Uint256)
                         |True =>
                              e = {_eventname : "Token Approved Successfully - Now calling transfer"; extracted_orderid : orderid; token_id: tokenID};
                             event e;
-                            transferNFTtoDEX owner tokenID
+                            transferNFTtoDEX _sender owner tokenID
                         |False =>
                             e = let raisedAt = "order_wrong_state" in makeErrorEvent raisedAt order_wrong_state;
                             event e
