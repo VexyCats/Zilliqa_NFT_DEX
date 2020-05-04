@@ -431,11 +431,10 @@ transition transferFrom(from: ByStr20, to: ByStr20, token_id: Uint256)
       event e;
       (* Send dummy callback message.                                                *)
       (* Revert transition if invalid recipient contract. Ignore if external address *)
-      msg_to_recipient = { _tag : "recipientAcceptTransferFrom"; _recipient : to; _amount : Uint128 0; 
-                          from : from; to : to; token_id : token_id };
+
       msg_to_sender = { _tag : "transferFromSuccessCallBack"; _recipient : _sender; _amount : Uint128 0; 
                         from : from; to : to; token_id : token_id };
-      msgs = two_msgs msg_to_recipient msg_to_sender;
+      msgs = one_msg msg_to_sender;
       send msgs
     end
   end

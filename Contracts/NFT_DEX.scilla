@@ -115,6 +115,8 @@ procedure transferNFTtoDEX (contractAddress: ByStr20, owner: ByStr20, tokenID: U
 (* take params and make a call to transfer NFT to self.*)
  self_DEX = _this_address;
   zero = Uint128 0;
+  e = { _eventname : "Transfer NFT  to DEX"; contractAddress: contractAddress; owner: owner;   to: self_DEX;
+    token_id: tokenID};
     transfered = {_tag: "transferFrom";
     _recipient: contractAddress;
     _amount: zero;
@@ -163,6 +165,9 @@ transition getApprovedCallBack(approved_addr: ByStr20, tokenID: Uint256)
                  |Some (Order owner price contractaddress tokenID orderid liststate) => 
                       (* creating listing and storing in listing mappings*)
                     tempPending = "PENDING";
+                    nil = Nil {Uint256};
+                    new_lists = Cons {Uint256} orderid nil;
+                    orderOwnerList[owner] := new_lists;
                     is_pending = checkOrderStatus tempPending liststate;   
                     match is_pending with
                         |True =>
@@ -198,6 +203,7 @@ transition transferFromSuccessCallBack(from: ByStr20, to: ByStr20, token_id: Uin
                          newOrder = Order owner price contractaddress token_id orderid state;
                          orderbook[orderid] := newOrder;
                          delete temp_orderbook[contractaddress][token_id];
+                         delete temp_orderbook[contractaddress];
                          orderList <- orderOwnerList[owner];
                     match orderList with 
                         |Some v =>
