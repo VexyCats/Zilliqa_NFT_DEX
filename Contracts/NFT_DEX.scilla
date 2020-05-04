@@ -70,8 +70,7 @@ field orderbook : Map Uint256 Order
 field temp_orderbook : Map ByStr20 (Map Uint256 Order)
                             = Emp ByStr20 (Map Uint256 Order)         
 
-(* Mapping between owner and all their orders *)
-field orderOwnerList: Map ByStr20 (List Uint256) = Emp ByStr20 (List Uint256)
+
 (* Fee taken from each purchase, 10% of price *)
 field dexFee: Uint128 = Uint128 10
 
@@ -165,9 +164,6 @@ transition getApprovedCallBack(approved_addr: ByStr20, tokenID: Uint256)
                  |Some (Order owner price contractaddress tokenID orderid liststate) => 
                       (* creating listing and storing in listing mappings*)
                     tempPending = "PENDING";
-                    nil = Nil {Uint256};
-                    new_lists = Cons {Uint256} orderid nil;
-                    orderOwnerList[owner] := new_lists;
                     is_pending = checkOrderStatus tempPending liststate;   
                     match is_pending with
                         |True =>
@@ -204,18 +200,8 @@ transition transferFromSuccessCallBack(from: ByStr20, to: ByStr20, token_id: Uin
                          orderbook[orderid] := newOrder;
                          delete temp_orderbook[contractaddress][token_id];
                          delete temp_orderbook[contractaddress];
-                         orderList <- orderOwnerList[owner];
-                    match orderList with 
-                        |Some v =>
-                         new_lists = Cons {Uint256} orderid v;
-                         orderOwnerList[owner] := new_lists;
                          e = {_eventname : "Order Listed Successful"; extracted_orderid : orderid; order: newOrder};
                          event e
-                        |None=>
-                                  (* failure, order not pending - fire off events *)
-                         e = {_eventname : "Order owner list mismatch"; extracted_order : orderid; order_state: orderList};
-                         event e
-                         end
                         |False =>
                          (* failure, order not pending - fire off events *)
                          e = let raisedAt = "order_wrong_state" in makeErrorEvent raisedAt order_wrong_state;
