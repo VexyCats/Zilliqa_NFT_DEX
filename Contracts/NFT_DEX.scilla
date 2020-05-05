@@ -3,7 +3,7 @@ scilla_version 0
 (***************************************************)
 (*               Associated library                *)
 (***************************************************)
-import BoolUtils ListUtils
+import BoolUtils ListUtils IntUtils
 
 library NFTDEX
 
@@ -227,24 +227,24 @@ dexFEE <- dexFee;
                 match is_active with
                 |True => 
                     (*Order is active! Check amount is right*)
-                is_amount_correct = builtin eq _amount price;
+                is_amount_correct =  uint128_ge _amount price;
                 match is_amount_correct with
                     |True => 
                         (* amount is correct go ahead and remove order and transfer NFT plus funds*)
                         (* remove fee from the purchase amount*)
-                        sellersAmount = builtin sub _amount dexFEE;
+                        sellersAmount = builtin sub price dexFEE;
                         (* Edit the listing state and update the orderbook*)
                          state = "SOLD";
                          newOrder = Order _sender price contractaddress tokenID orderid state;
                          orderbook[orderID] := newOrder;
                          (* transfer NFT to new owner*)
-                         (* ==== QUESTION ==== : Can I call transferNFT and THEN transfer ZIL to owner within this one procedure using two_msgs?*)
+        
                            zero = Uint128 0;
                         nftTransfered = {_tag: "transfer";
                         _recipient: contractaddress;
                         _amount: zero;
                         to: _sender;
-                        tokenID: tokenID
+                        token_id: tokenID
                             };
                         sendPayment = {_tag : ""; _recipient : owner; _amount : sellersAmount};
                         e = { _eventname : "Transfer NFT back to owner and send payment to seller"; order: orderID; tokenID: tokenID; buyers_address: _sender; seller_payment : sellersAmount; seller_address : owner};
@@ -253,6 +253,8 @@ dexFEE <- dexFee;
                         send msgs
                          
                     |False =>
+                      e = { _eventname : "Payment amount error:"; price_needed: price; amount_sent: _amount };
+                        event e;
                         e = let raisedAt = "payment_amount_error" in makeErrorEvent raisedAt payment_amount_error;
                         event e 
                     end
@@ -382,4 +384,14 @@ transition changeDEXfee (fee: Uint128)
             e = let raisedAt = "code_not_authorized" in makeErrorEvent raisedAt code_not_authorized;
             event e 
         end
+end
+
+transition recipientAcceptTransferFrom(from: ByStr20, to: ByStr20, token_id: Uint256)
+ e = {_eventname : "NFT successfully transferred from owner"; from : from; to: to; token_id: token_id};
+        event e
+end
+
+transition transferSuccessCallBack(from: ByStr20, to: ByStr20, token_id: Uint256)
+ e = {_eventname : "NFT successfully transferred to new owner"; from : from; to: to; token_id: token_id};
+        event e
 end
