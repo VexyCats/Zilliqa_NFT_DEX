@@ -7,18 +7,17 @@ import BoolUtils
 library NonfungibleToken
 
 (* User-defined ADTs *)
-type Unit =
-| Unit
+type Dummy =
+| Dummy
 
 type Operation =
 | Add
 | Sub
 
 (* Global variables *)
-
 let zero = Uint256 0
 let one = Uint256 1
-let verdad = Unit
+let verdad = Dummy
 let add_operation = Add
 let sub_operation = Sub
 
@@ -85,9 +84,9 @@ contract NonfungibleToken
 
 (* Mutable fields *)
 
-(* List of minters available *)
-field minters: Map ByStr20 Unit =
-    let emp_map = Emp ByStr20 Unit in
+(* Mapping of minters available *)
+field minters: Map ByStr20 Dummy =
+    let emp_map = Emp ByStr20 Dummy in
     builtin put emp_map contract_owner verdad
 
 (* Mapping between token_id to token_owner *)
@@ -100,9 +99,9 @@ field owned_token_count: Map ByStr20 Uint256 = Emp ByStr20 Uint256
 (* @dev: There can only be one approved address per token at any given time. *)
 field token_approvals: Map Uint256 ByStr20 = Emp Uint256 ByStr20
 
-(* Mapping from owner to operator approvals  *)
-field operator_approvals: Map ByStr20 (Map ByStr20 Unit)
-                            = Emp ByStr20 (Map ByStr20 Unit)
+(* Mapping of token_owner to operator  *)
+field operator_approvals: Map ByStr20 (Map ByStr20 Dummy)
+                            = Emp ByStr20 (Map ByStr20 Dummy)
 
 (* Mapping from token_id to token_uri *)
 field token_uris: Map Uint256 String = Emp Uint256 String
@@ -325,7 +324,7 @@ transition ConfigureMinter(minter: ByStr20)
   IsContractOwner;
   some_minter <- minters[minter];
   match some_minter with
-  | Some Unit => 
+  | Some Dummy => 
     (* Remove minter *)
     delete minters[minter];
     e = {_eventname: "RemovedMinterSuccess"; minter: minter};
