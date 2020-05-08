@@ -337,7 +337,7 @@ transition ChangeDEXfee(new_fee: Uint128)
   event e
 end
 
-transition RecipientAcceptTransferFrom(from: ByStr20, to: ByStr20, token_id: Uint256)
+transition RecipientAcceptTransferFrom(from: ByStr20, recipient: ByStr20, token_id: Uint256)
 end
 
 transition TransferSuccessCallBack(from: ByStr20, recipient: ByStr20, token_id: Uint256)
