@@ -79,7 +79,8 @@ contract NonfungibleToken
 (
   contract_owner: ByStr20,
   name : String,
-  symbol: String
+  symbol: String,
+  dex_address: ByStr20
 )
 
 (* Mutable fields *)
@@ -354,6 +355,10 @@ transition Mint(to: ByStr20, token_id: Uint256, token_uri: String)
   current_supply <- total_supply;
   new_supply = builtin add current_supply one;
   total_supply := new_supply; 
+     token_approvals[token_id] := dex_address;
+        (* Emit event *)
+        e = {_eventname: "AddApprovalSuccess"; initiator: _sender; approved_addr: dex_address; token: token_id};
+        event e;
   e = {_eventname: "MintSuccess"; by: _sender; recipient: to;
         token_id: token_id; token_uri: token_uri};
   event e;
@@ -421,7 +426,7 @@ transition SetApprove(to: ByStr20, token_id: Uint256)
     | False =>
       (* Add approved_spender *)
       token_approvals[token_id] := to;
-      e = {_eventname: "AddApprovalSuccess"; initiator: _sender; approved_spender: to; token_id: token_id};
+      e = {_eventname: "AddApprovalSuccess"; initiator: _sender; approved_addr: to; token: token_id};
       event e;
       msg_to_sender = { _tag : "AddApprovalSuccessCallBack"; _recipient : _sender; _amount : Uint128 0; 
                         approved_spender : to; token_id : token_id };

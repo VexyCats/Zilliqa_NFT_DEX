@@ -112,12 +112,11 @@ end
 
 (*@param contractAddress - address of NFT contract*)
 (*@param tokenID - address of NFT contract*)
-procedure TransferNFTtoDEX (contract_address: ByStr20, owner: ByStr20, token_id: Uint256)
+procedure TransferNFTtoDEX (contract_address: ByStr20, token_id: Uint256)
   transfered = {
     _tag: "TransferFrom";
     _recipient: contract_address;
     _amount: Uint128 0;
-    from: owner;
     to: _this_address;
     token_id: token_id
   };
@@ -171,7 +170,7 @@ transition GetApprovedCallBack(approved_addr: ByStr20, token_id: Uint256)
       | Pending =>
         e = {_eventname : "TokenApprovedSuccess"; extracted_order_id : item_order_id; token_id : token_id};
         event e;
-        TransferNFTtoDEX _sender owner token_id
+        TransferNFTtoDEX _sender token_id
       | _ =>
         err = CodeOrderWrongState;
         ThrowError err
@@ -183,7 +182,7 @@ transition GetApprovedCallBack(approved_addr: ByStr20, token_id: Uint256)
   end
 end
 
-transition TransferFromSuccessCallBack(from: ByStr20, to: ByStr20, token_id: Uint256)
+transition TransferFromSuccessCallBack(from: ByStr20, recipient: ByStr20, token_id: Uint256)
   temp_order <- temp_orderbook[_sender][token_id];
   match temp_order with 
   | Some (Order owner price contract_address token_id item_order_id list_state) => 
@@ -341,5 +340,5 @@ end
 transition RecipientAcceptTransferFrom(from: ByStr20, to: ByStr20, token_id: Uint256)
 end
 
-transition TransferSuccessCallBack(from: ByStr20, to: ByStr20, token_id: Uint256)
+transition TransferSuccessCallBack(from: ByStr20, recipient: ByStr20, token_id: Uint256)
 end
