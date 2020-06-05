@@ -204,7 +204,10 @@ end
 transition onTransferSuccess(node: ByStr32, owner: ByStr20)
   token_id = builtin to_uint256 node;
   temp_order <- temp_orderbook[_sender][token_id];
-  match temp_order with 
+  is_DEX_address = builtin eq _this_address owner;
+  match is_DEX_address with
+    | True =>
+      match temp_order with 
   | Some (Order owner price contract_address token_id item_order_id node_id list_state) => 
     match list_state with
     | Pending =>
@@ -223,6 +226,9 @@ transition onTransferSuccess(node: ByStr32, owner: ByStr20)
     err = CodeOrderNotFound;
     ThrowError err
   end
+    | False =>
+      end
+  
 end
 
 
@@ -301,7 +307,7 @@ transition Purchase(item_order_id: Uint256)
         new_state = Sold;
         new_order = Order _sender price contract_address token_id item_order_id node_id new_state;
         orderbook[item_order_id] := new_order;
-        delete domain_tracker[node_id];
+        
         (* check if domain or not*)
         nullBytes = _this_address;
         nullBytes = builtin sha256hash nullBytes;
