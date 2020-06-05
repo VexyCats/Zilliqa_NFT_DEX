@@ -412,12 +412,10 @@ const chainId = 333; // chainId of the developer testnet
 const msgVersion = 1; // current msgVersion
 const VERSION = bytes.pack(chainId, msgVersion);
 
-// Populate the wallet with an account
-const privateKeyold =
+// Populate the wallet with an testnet dev account
+const privateKey =
   "3375F915F3F9AE35E6B301B7670F53AD1A5BE15D8221EC7FD5E503F21D3450C8";
 
-const privateKey =
-  "93063de7698d672e17bccec02019f918aa6e2d4ced4093ed256322a2851d93b3";
 zilliqa.wallet.addByPrivateKey(privateKey);
 
 const address = getAddressFromPrivateKey(privateKey);

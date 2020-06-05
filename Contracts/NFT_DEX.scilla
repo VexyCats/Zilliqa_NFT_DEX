@@ -34,7 +34,7 @@ type Status =
 (*Status  - Order status*)
 
  type Order =
-| Order of ByStr20 Uint128 ByStr20 Uint256 Uint256 Status 
+| Order of ByStr20 Uint128 ByStr20 Uint256 Uint256 ByStr32 Status 
 
 (* Error exceptions *)
 type Error =
@@ -43,6 +43,7 @@ type Error =
   | CodeOrderNotFound
   | CodePaymentAmountError
   | CodeNotAuthorized
+  | CodeOrderAlreadyExists
 
 let make_error =
   fun (result : Error) =>
@@ -53,6 +54,7 @@ let make_error =
       | CodeOrderNotFound            => Int32 -3
       | CodePaymentAmountError       => Int32 -4
       | CodeNotAuthorized            => Int32 -5
+      | CodeOrderAlreadyExists          => Int32 -6
       end
     in
     { _exception : "Error"; code : result_code }
@@ -72,7 +74,7 @@ field orderbook : Map Uint256 Order
 (* Temp_orderbook: mapping (contract_address => (token_id => (Order struct))) *)
 field temp_orderbook : Map ByStr20 (Map Uint256 Order)
                             = Emp ByStr20 (Map Uint256 Order)         
-
+field domain_tracker : Map ByStr32 Uint256 = Emp ByStr32 Uint256
 
 (* Fee taken from each purchase, 10% of price *)
 field dex_fee: Uint128 = Uint128 10
@@ -123,6 +125,21 @@ procedure TransferNFTtoDEX (contract_address: ByStr20, token_id: Uint256)
   msgs = one_msg transfered;
   send msgs
 end
+(* @dev Transfer the ownership of a given domain node to this address*)
+
+(*@param contractAddress - address of NFT contract*)
+(*@param tokenID - address of NFT contract*)
+procedure TransferDomaintoDEX (contract_address: ByStr20, node: ByStr32)
+  transfered = {
+    _tag: "transfer";
+    _recipient: contract_address;
+    _amount: Uint128 0;
+    node: node;
+    owner: _this_address
+  };
+  msgs = one_msg transfered;
+  send msgs
+end
 
 procedure IsContractOwner()
   is_contract_owner = builtin eq _sender contract_owner;
@@ -142,7 +159,9 @@ transition Sell(contract_address: ByStr20, token_id: Uint256, price: Uint128)
     (* Create a temporary order that is pending to be used as reference in callbacks*)
     list_state  = Pending;
     current_order_id <- order_id;
-    new_order = Order _sender price contract_address token_id current_order_id list_state;
+    nullBytes = _this_address;
+    nullBytes = builtin sha256hash nullBytes;
+    new_order = Order _sender price contract_address token_id current_order_id nullBytes list_state;
     temp_orderbook[contract_address][token_id] := new_order;
     new_order_id = builtin add current_order_id one;
     order_id := new_order_id;
@@ -151,6 +170,62 @@ transition Sell(contract_address: ByStr20, token_id: Uint256, price: Uint128)
      (* Check approval to see if we can transfer*)
     CheckApproved contract_address token_id 
 end
+
+(* Create a listing and sell an NFT*) 
+(* First call from frontend. User wants to post an item for sale. They call this function *)
+(* then it will check if approval is okay, if so, then it will transfer 721 to itself, *)
+(* and create the listing information and publish it as an item for sale *)
+transition SellDomain(contract_address: ByStr20, node_id: ByStr32, price: Uint128)    
+    (* Create a temporary order that is pending to be used as reference in callbacks*)
+    list_state  = Pending;
+    current_order_id <- order_id;
+    token_id = builtin to_uint256 node_id;
+    already_exist <- exists domain_tracker[node_id];
+    match already_exist with
+      | True =>
+        (* Error already exists *)
+         err = CodeOrderAlreadyExists;
+         ThrowError err
+      | False => 
+    new_order = Order _sender price contract_address token_id current_order_id node_id list_state;
+    temp_orderbook[contract_address][token_id] := new_order;
+    new_order_id = builtin add current_order_id one;
+    order_id := new_order_id;
+    domain_tracker[node_id] := token_id;
+    e = {_eventname : "PendingOrderRecorded"; extracted_order_id : current_order_id; order_info: new_order};
+    event e;
+     (* Check approval to see if we can transfer*)
+    (*CheckApproved contract_address node_id*)
+    TransferDomaintoDEX contract_address node_id
+    end
+end
+(*transition transfer(node: ByStr32, owner: ByStr20)*)
+
+transition onTransferSuccess(node: ByStr32, owner: ByStr20)
+  token_id = builtin to_uint256 node;
+  temp_order <- temp_orderbook[_sender][token_id];
+  match temp_order with 
+  | Some (Order owner price contract_address token_id item_order_id node_id list_state) => 
+    match list_state with
+    | Pending =>
+      (* Store listing info inside the owners mappings and order mappings for references *)
+      new_state = Active;
+      new_order = Order owner price contract_address token_id item_order_id node_id new_state;
+      orderbook[item_order_id] := new_order;
+      delete temp_orderbook[contract_address][token_id];
+      e = {_eventname : "ListOrderSuccess"; extracted_order_id : item_order_id; order: new_order};
+      event e
+    | _ =>
+      err = CodeOrderWrongState;
+      ThrowError err
+    end
+  | None => 
+    err = CodeOrderNotFound;
+    ThrowError err
+  end
+end
+
+
 
 (*Callback Transitions*)
 transition GetApprovedCallBack(approved_addr: ByStr20, token_id: Uint256)
@@ -165,7 +240,7 @@ transition GetApprovedCallBack(approved_addr: ByStr20, token_id: Uint256)
     (*Approved to transfer NFT - call TransferFrom on NFT*)
     temp_order <- temp_orderbook[_sender][token_id];
     match temp_order with 
-    | Some (Order owner price contract_address token_id item_order_id list_state) => 
+    | Some (Order owner price contract_address token_id item_order_id node_id list_state) => 
       match list_state with
       | Pending =>
         e = {_eventname : "TokenApprovedSuccess"; extracted_order_id : item_order_id; token_id : token_id};
@@ -185,14 +260,14 @@ end
 transition TransferFromSuccessCallBack(from: ByStr20, recipient: ByStr20, token_id: Uint256)
   temp_order <- temp_orderbook[_sender][token_id];
   match temp_order with 
-  | Some (Order owner price contract_address token_id item_order_id list_state) => 
+  | Some (Order owner price contract_address token_id item_order_id node_id list_state) => 
     match list_state with
     | Pending =>
       (* Store listing info inside the owners mappings and order mappings for references *)
       new_state = Active;
-      new_order = Order owner price contract_address token_id item_order_id new_state;
+      new_order = Order owner price contract_address token_id item_order_id node_id new_state;
       orderbook[item_order_id] := new_order;
-      delete temp_orderbook[contract_address][item_order_id];
+      delete temp_orderbook[contract_address][token_id];
       e = {_eventname : "ListOrderSuccess"; extracted_order_id : item_order_id; order: new_order};
       event e
     | _ =>
@@ -210,7 +285,7 @@ transition Purchase(item_order_id: Uint256)
   listing <- orderbook[item_order_id];
   current_dex_fee <- dex_fee;
   match listing with
-  | Some (Order owner price contract_address token_id item_order_id list_state) =>  
+  | Some (Order owner price contract_address token_id item_order_id node_id list_state) =>  
     match list_state with
     | Active => 
       (*Order is active! Check amount is right*)
@@ -224,8 +299,15 @@ transition Purchase(item_order_id: Uint256)
         sellers_amount = builtin sub price fees;
         (* Edit the listing state and update the orderbook*)
         new_state = Sold;
-        new_order = Order _sender price contract_address token_id item_order_id new_state;
+        new_order = Order _sender price contract_address token_id item_order_id node_id new_state;
         orderbook[item_order_id] := new_order;
+        delete domain_tracker[node_id];
+        (* check if domain or not*)
+        nullBytes = _this_address;
+        nullBytes = builtin sha256hash nullBytes;
+        is_not_domain = builtin eq nullBytes node_id;
+       match is_not_domain with
+    | True => 
         (* transfer NFT to new owner*)
         nft_transfered = {
           _tag: "Transfer";
@@ -243,6 +325,25 @@ transition Purchase(item_order_id: Uint256)
         event e;
         msgs = two_msgs nft_transfered send_payment;
         send msgs
+    | False =>
+        (* transfer NFT to new owner*)
+       nft_transfered = {
+          _tag: "transfer";
+          _recipient: contract_address;
+          _amount: Uint128 0;
+          node: node_id;
+          owner: _sender
+        };
+        send_payment = {
+          _tag : ""; 
+          _recipient : owner; 
+          _amount : sellers_amount
+        };
+        e = { _eventname : "PurchaseSuccess"; item_order_id: item_order_id; token_id: token_id; buyer_address: _sender; seller_address : owner; price_sold : sellers_amount};
+        event e;
+        msgs = two_msgs nft_transfered send_payment;
+        send msgs
+    end
       | False =>
         err = CodePaymentAmountError;
         ThrowError err
@@ -257,12 +358,15 @@ transition Purchase(item_order_id: Uint256)
   end
 end
 
+
+
+
 (* Cancel a a listing, remove it, and transfer NFT back to owner*) 
 (* Only performed by owner of listing*)
 transition CancelListing(item_order_id : Uint256)
   listing <- orderbook[item_order_id];
   match listing with
-  | Some (Order owner price contract_address token_id item_order_id list_state) =>  
+  | Some (Order owner price contract_address token_id item_order_id node_id list_state) =>  
     (*check if owner of order*)
     is_owner = builtin eq _sender owner;
     match is_owner with
@@ -308,10 +412,10 @@ transition CancelOrder(item_order_id: Uint256)
   IsContractOwner;
   listing <- orderbook[item_order_id];
   match listing with
-  | Some (Order owner price contract_address token_id item_order_id list_state) =>  
+  | Some (Order owner price contract_address token_id item_order_id node_id list_state) =>  
     (* Edit the listing state and update the orderbook*)
     new_state = Cancelled;
-    new_order = Order owner price contract_address token_id item_order_id new_state;
+    new_order = Order owner price contract_address token_id item_order_id node_id new_state;
     orderbook[item_order_id] := new_order;
     e = {_eventname : "AdminCancelledOrder"; item_order_id : item_order_id; new_state: new_state};
     event e;
