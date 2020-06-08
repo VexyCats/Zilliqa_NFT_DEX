@@ -191,7 +191,7 @@ transition SellDomain(contract_address: ByStr20, node_id: ByStr32, price: Uint12
     temp_orderbook[contract_address][token_id] := new_order;
     new_order_id = builtin add current_order_id one;
     order_id := new_order_id;
-    domain_tracker[node_id] := token_id;
+  
     e = {_eventname : "PendingOrderRecorded"; extracted_order_id : current_order_id; order_info: new_order};
     event e;
      (* Check approval to see if we can transfer*)
@@ -213,6 +213,7 @@ transition onTransferSuccess(node: ByStr32, owner: ByStr20)
     | Pending =>
       (* Store listing info inside the owners mappings and order mappings for references *)
       new_state = Active;
+      domain_tracker[node] := token_id;
       new_order = Order owner price contract_address token_id item_order_id node_id new_state;
       orderbook[item_order_id] := new_order;
       delete temp_orderbook[contract_address][token_id];
@@ -332,6 +333,7 @@ transition Purchase(item_order_id: Uint256)
         msgs = two_msgs nft_transfered send_payment;
         send msgs
     | False =>
+       delete domain_tracker[node_id];
         (* transfer NFT to new owner*)
        nft_transfered = {
           _tag: "transfer";
