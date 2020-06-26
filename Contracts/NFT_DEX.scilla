@@ -382,11 +382,35 @@ transition CancelListing(item_order_id : Uint256)
       match list_state with
       | Active => 
         (*Order is active! Go ahead and delete and return NFT*)
+        (* check if domain or not*)
+        nullBytes = _this_address;
+        nullBytes = builtin sha256hash nullBytes;
+        is_not_domain = builtin eq nullBytes node_id;
+       match is_not_domain with
+        | True => 
+        (* transfer NFT to new owner*)
         delete orderbook[item_order_id];
         e = {_eventname : "OrderCanceled"; extracted_order : item_order_id};
         event e;
         (*transfer NFT to owner*)
         TransferNFTtoOwner contract_address token_id owner
+        | False =>
+       delete domain_tracker[node_id];
+        (* transfer NFT to new owner*)
+        delete orderbook[item_order_id];
+        e = {_eventname : "OrderCanceled"; extracted_order : item_order_id};
+        event e;
+       nft_transfered = {
+          _tag: "transfer";
+          _recipient: contract_address;
+          _amount: Uint128 0;
+          node: node_id;
+          owner: owner
+        };
+        msgs = one_msg nft_transfered;
+        send msgs
+        end
+       
       | _ => 
         err = CodeOrderWrongState;
         ThrowError err
@@ -427,8 +451,27 @@ transition CancelOrder(item_order_id: Uint256)
     orderbook[item_order_id] := new_order;
     e = {_eventname : "AdminCancelledOrder"; item_order_id : item_order_id; new_state: new_state};
     event e;
-    (*transfer NFT to owner*)
-    TransferNFTtoOwner contract_address token_id owner
+     (* check if domain or not*)
+        nullBytes = _this_address;
+        nullBytes = builtin sha256hash nullBytes;
+        is_not_domain = builtin eq nullBytes node_id;
+       match is_not_domain with
+        | True => 
+        (* transfer NFT to new owner*)
+        TransferNFTtoOwner contract_address token_id owner
+        | False =>
+       delete domain_tracker[node_id];
+        (* transfer NFT to new owner*)
+       nft_transfered = {
+          _tag: "transfer";
+          _recipient: contract_address;
+          _amount: Uint128 0;
+          node: node_id;
+          owner: owner
+        };
+        msgs = one_msg nft_transfered;
+        send msgs
+        end
   | None =>
     err = CodeOrderNotFound;
     ThrowError err
