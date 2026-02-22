@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "dependencies": {
-    "bn.js": "^5.1.1",
+    "bn.js": "^5.2.3",
     "tslib": "^1.10.0"
   },
   "devDependencies": {},
